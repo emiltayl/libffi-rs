@@ -12,13 +12,18 @@ use std::os::raw::{c_uint, c_void};
 
 use crate::raw;
 
-/// The two kinds of errors reported by libffi.
+/// Errors reported by libffi.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
     /// Given a bad or unsupported type representation.
     Typedef,
     /// Given a bad or unsupported ABI.
     Abi,
+    /// Given a NULL cif pointer or invalid type definitions for argument or return values.
+    ArgType,
+    /// An unrecognized error code, potentially a bug.
+    Unknown(u32),
 }
 
 /// The [`std::result::Result`] type specialized for libffi [`Error`]s.
@@ -26,14 +31,12 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 // Converts the raw status type to a `Result`.
 fn status_to_result<R>(status: raw::ffi_status, good: R) -> Result<R> {
-    if status == raw::ffi_status_FFI_OK {
-        Ok(good)
-    } else if status == raw::ffi_status_FFI_BAD_TYPEDEF {
-        Err(Error::Typedef)
-    }
-    // If we don't recognize the status, that is an ABI error:
-    else {
-        Err(Error::Abi)
+    match status {
+        raw::ffi_status_FFI_OK => Ok(good),
+        raw::ffi_status_FFI_BAD_TYPEDEF => Err(Error::Typedef),
+        raw::ffi_status_FFI_BAD_ABI => Err(Error::Abi),
+        raw::ffi_status_FFI_BAD_ARGTYPE => Err(Error::ArgType),
+        _ => Err(Error::Unknown(status)),
     }
 }
 

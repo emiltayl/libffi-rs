@@ -133,9 +133,9 @@ pub use raw::{
 pub mod types {
     pub use crate::raw::{
         ffi_type_double as double, ffi_type_float as float, ffi_type_pointer as pointer,
-        ffi_type_sint16 as sint16, ffi_type_sint32 as sint32, ffi_type_sint64 as sint64,
-        ffi_type_sint8 as sint8, ffi_type_uint16 as uint16, ffi_type_uint32 as uint32,
-        ffi_type_uint64 as uint64, ffi_type_uint8 as uint8, ffi_type_void as void,
+        ffi_type_sint8 as sint8, ffi_type_sint16 as sint16, ffi_type_sint32 as sint32,
+        ffi_type_sint64 as sint64, ffi_type_uint8 as uint8, ffi_type_uint16 as uint16,
+        ffi_type_uint32 as uint32, ffi_type_uint64 as uint64, ffi_type_void as void,
     };
 
     #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
@@ -275,8 +275,7 @@ pub unsafe fn prep_cif(
 /// - `cif` — the CIF to initialize
 /// - `abi` — the calling convention to use
 /// - `nfixedargs` — the number of fixed arguments
-/// - `ntotalargs` — the total number of arguments, including fixed and
-///    var args
+/// - `ntotalargs` — the total number of arguments, including fixed and var args
 /// - `rtype` — the result type
 /// - `atypes` — the argument types (length must be at least `nargs`)
 ///
@@ -309,8 +308,7 @@ pub unsafe fn prep_cif_var(
 ///
 /// # Arguments
 ///
-/// * `cif` — describes the argument and result types and the calling
-///           convention
+/// * `cif` — describes the argument and result types and the calling convention
 /// * `fun` — the function to call
 /// * `args` — the arguments to pass to `fun`
 ///
@@ -340,9 +338,9 @@ pub unsafe fn prep_cif_var(
 /// };
 ///
 /// assert_eq!(9, result);
-/// 
+///
 /// ```
-/// 
+///
 /// # Safety
 /// libffi will read values from `args` based on the CIF, make sure that every pointer points to
 /// correct data types that are properly aligned. Additionally, the ffi function may perform unsafe
@@ -409,7 +407,7 @@ pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
 ///     closure_free(closure_handle);
 /// }
 /// ```
-/// 
+///
 /// # Safety
 /// This will free the provided pointer, make sure that it is only called on pointers returned from
 /// closure_alloc.
@@ -466,10 +464,10 @@ pub type RawCallback = unsafe extern "C" fn(
 /// - `closure` — the closure to initialize
 /// - `cif` — the calling convention and types for calling the closure
 /// - `callback` — the function that the closure will invoke
-/// - `userdata` — the closed-over value, stored in the closure and
-///    passed to the callback upon invocation
-/// - `code` — the closure’s code pointer, *i.e.*, the second component
-///   returned by [`closure_alloc`].
+/// - `userdata` — the closed-over value, stored in the closure and passed to the callback upon
+///   invocation
+/// - `code` — the closure’s code pointer, *i.e.*, the second component returned by
+///   [`closure_alloc`].
 ///
 /// # Result
 ///
@@ -561,10 +559,10 @@ pub unsafe fn prep_closure<U, R>(
 /// - `closure` — the closure to initialize
 /// - `cif` — the calling convention and types for calling the closure
 /// - `callback` — the function that the closure will invoke
-/// - `userdata` — the closed-over value, stored in the closure and
-///    passed to the callback upon invocation
-/// - `code` — the closure’s code pointer, *i.e.*, the second component
-///   returned by [`closure_alloc`].
+/// - `userdata` — the closed-over value, stored in the closure and passed to the callback upon
+///   invocation
+/// - `code` — the closure’s code pointer, *i.e.*, the second component returned by
+///   [`closure_alloc`].
 ///
 /// # Result
 ///

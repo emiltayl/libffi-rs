@@ -152,7 +152,10 @@ pub use aarch64::*;
 
 /// From libffi:src/powerpc/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/73dd43afc8a447ba98ea02e9aad4c6898dc77fb0/src/powerpc/ffitarget.h#L60>
-#[expect(unexpected_cfgs, reason = "Support for non-standard target powerpc-unknown-linux-gnuspe?")]
+#[expect(
+    unexpected_cfgs,
+    reason = "Support for non-standard target powerpc-unknown-linux-gnuspe?"
+)]
 mod powerpc_family {
     pub mod powerpc {
         use crate::ffi_abi;

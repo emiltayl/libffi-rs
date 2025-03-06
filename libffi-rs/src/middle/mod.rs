@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::os::raw::c_void;
 
 use crate::low;
-pub use crate::low::{ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI, Callback, CallbackMut, CodePtr};
+pub use crate::low::{Callback, CallbackMut, CodePtr, ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI};
 
 mod util;
 

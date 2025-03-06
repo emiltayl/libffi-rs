@@ -74,21 +74,23 @@ impl fmt::Debug for TypeArray {
 /// null terminator.
 unsafe fn ffi_type_array_len(mut array: TypeArray_) -> usize {
     let mut count = 0;
-    while !(*array).is_null() {
-        count += 1;
-        array = array.offset(1);
+    unsafe {
+        while !(*array).is_null() {
+            count += 1;
+            array = array.offset(1);
+        }
+        count
     }
-    count
 }
 
 /// Creates an empty `TypeArray_` with null terminator.
 unsafe fn ffi_type_array_create_empty(len: usize) -> Owned<TypeArray_> {
-    let array = libc::malloc((len + 1) * mem::size_of::<Type_>()) as TypeArray_;
+    let array = unsafe { libc::malloc((len + 1) * mem::size_of::<Type_>()) as TypeArray_ };
     assert!(
         !array.is_null(),
         "ffi_type_array_create_empty: out of memory"
     );
-    *array.add(len) = ptr::null_mut::<low::ffi_type>() as Type_;
+    unsafe { *array.add(len) = ptr::null_mut::<low::ffi_type>() as Type_ };
     array
 }
 
@@ -99,9 +101,9 @@ where
     I: ExactSizeIterator<Item = Type>,
 {
     let size = elements.len();
-    let new = ffi_type_array_create_empty(size);
+    let new = unsafe { ffi_type_array_create_empty(size) };
     for (i, element) in elements.enumerate() {
-        *new.add(i) = *element.0;
+        unsafe { *new.add(i) = *element.0 };
         mem::forget(element);
     }
 
@@ -114,13 +116,15 @@ unsafe fn ffi_type_struct_create_raw(
     size: usize,
     alignment: u16,
 ) -> Owned<Type_> {
-    let new = libc::malloc(mem::size_of::<low::ffi_type>()) as Type_;
+    let new = unsafe { libc::malloc(mem::size_of::<low::ffi_type>()) as Type_ };
     assert!(!new.is_null(), "ffi_type_struct_create_raw: out of memory");
 
-    (*new).size = size;
-    (*new).alignment = alignment;
-    (*new).type_ = low::type_tag::STRUCT;
-    (*new).elements = elements;
+    unsafe {
+        (*new).size = size;
+        (*new).alignment = alignment;
+        (*new).type_ = low::type_tag::STRUCT;
+        (*new).elements = elements;
+    }
 
     new
 }
@@ -131,53 +135,61 @@ unsafe fn ffi_type_struct_create<I>(elements: I) -> Owned<Type_>
 where
     I: ExactSizeIterator<Item = Type>,
 {
-    ffi_type_struct_create_raw(ffi_type_array_create(elements), 0, 0)
+    unsafe { ffi_type_struct_create_raw(ffi_type_array_create(elements), 0, 0) }
 }
 
 /// Makes a copy of a type array.
 unsafe fn ffi_type_array_clone(old: TypeArray_) -> Owned<TypeArray_> {
-    let size = ffi_type_array_len(old);
-    let new = ffi_type_array_create_empty(size);
+    unsafe {
+        let size = ffi_type_array_len(old);
+        let new = ffi_type_array_create_empty(size);
 
-    for i in 0..size {
-        *new.add(i) = ffi_type_clone(*old.add(i));
+        for i in 0..size {
+            *new.add(i) = ffi_type_clone(*old.add(i));
+        }
+
+        new
     }
-
-    new
 }
 
 /// Makes a copy of a type.
 unsafe fn ffi_type_clone(old: Type_) -> Owned<Type_> {
-    if (*old).type_ == low::type_tag::STRUCT {
-        let low::ffi_type {
-            alignment,
-            elements,
-            size,
-            ..
-        } = *old;
-        let new = ffi_type_struct_create_raw(ffi_type_array_clone(elements), size, alignment);
-        new
-    } else {
-        old
+    unsafe {
+        if (*old).type_ == low::type_tag::STRUCT {
+            let low::ffi_type {
+                alignment,
+                elements,
+                size,
+                ..
+            } = *old;
+
+            ffi_type_struct_create_raw(ffi_type_array_clone(elements), size, alignment)
+        } else {
+            old
+        }
     }
 }
 
 /// Destroys a `TypeArray_` and all of its elements.
 unsafe fn ffi_type_array_destroy(victim: Owned<TypeArray_>) {
-    let mut current = victim;
-    while !(*current).is_null() {
-        ffi_type_destroy(*current);
-        current = current.offset(1);
-    }
+    unsafe {
+        let mut current = victim;
+        while !(*current).is_null() {
+            ffi_type_destroy(*current);
+            current = current.offset(1);
+        }
 
-    libc::free(victim as *mut libc::c_void);
+        libc::free(victim as *mut libc::c_void);
+    }
 }
 
 /// Destroys a `Type_` if it was dynamically allocated.
 unsafe fn ffi_type_destroy(victim: Owned<Type_>) {
-    if (*victim).type_ == low::type_tag::STRUCT {
-        ffi_type_array_destroy((*victim).elements);
-        libc::free(victim as *mut libc::c_void);
+    unsafe {
+        if (*victim).type_ == low::type_tag::STRUCT {
+            ffi_type_array_destroy((*victim).elements);
+            libc::free(victim as *mut libc::c_void);
+        }
     }
 }
 

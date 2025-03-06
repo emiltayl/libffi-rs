@@ -96,11 +96,11 @@ impl CodePtr {
     /// function actually has type `void(*)()`, it will need to be
     /// cast before it is called.
     pub unsafe fn as_safe_fun(&self) -> &extern "C" fn() {
-        self.as_any_ref_()
+        unsafe { self.as_any_ref_() }
     }
 
     pub(crate) unsafe fn as_any_ref_<T>(&self) -> &T {
-        &*(&self.0 as *const _ as *const T)
+        unsafe { &*(&self.0 as *const _ as *const T) }
     }
 
     /// Gets the code pointer typed as a `const void*`.
@@ -253,7 +253,7 @@ pub unsafe fn prep_cif(
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
 ) -> Result<()> {
-    let status = raw::ffi_prep_cif(cif, abi, nargs as c_uint, rtype, atypes);
+    let status = unsafe { raw::ffi_prep_cif(cif, abi, nargs as c_uint, rtype, atypes) };
     status_to_result(status, ())
 }
 
@@ -292,14 +292,16 @@ pub unsafe fn prep_cif_var(
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
 ) -> Result<()> {
-    let status = raw::ffi_prep_cif_var(
-        cif,
-        abi,
-        nfixedargs as c_uint,
-        ntotalargs as c_uint,
-        rtype,
-        atypes,
-    );
+    let status = unsafe {
+        raw::ffi_prep_cif_var(
+            cif,
+            abi,
+            nfixedargs as c_uint,
+            ntotalargs as c_uint,
+            rtype,
+            atypes,
+        )
+    };
     status_to_result(status, ())
 }
 
@@ -338,16 +340,26 @@ pub unsafe fn prep_cif_var(
 /// };
 ///
 /// assert_eq!(9, result);
+/// 
 /// ```
+/// 
+/// # Safety
+/// libffi will read values from `args` based on the CIF, make sure that every pointer points to
+/// correct data types that are properly aligned. Additionally, the ffi function may perform unsafe
+/// actions on provided pointers.
 pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -> R {
     let mut result = mem::MaybeUninit::<R>::uninit();
-    raw::ffi_call(
-        cif,
-        Some(*fun.as_safe_fun()),
-        result.as_mut_ptr() as *mut c_void,
-        args,
-    );
-    result.assume_init()
+
+    unsafe {
+        raw::ffi_call(
+            cif,
+            Some(*fun.as_safe_fun()),
+            result.as_mut_ptr() as *mut c_void,
+            args,
+        );
+
+        result.assume_init()
+    }
 }
 
 /// Allocates a closure.
@@ -397,8 +409,12 @@ pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
 ///     closure_free(closure_handle);
 /// }
 /// ```
+/// 
+/// # Safety
+/// This will free the provided pointer, make sure that it is only called on pointers returned from
+/// closure_alloc.
 pub unsafe fn closure_free(closure: *mut ffi_closure) {
-    raw::ffi_closure_free(closure as *mut c_void);
+    unsafe { raw::ffi_closure_free(closure as *mut c_void) };
 }
 
 /// The type of function called by a closure.
@@ -510,13 +526,16 @@ pub unsafe fn prep_closure<U, R>(
     userdata: *const U,
     code: CodePtr,
 ) -> Result<()> {
-    let status = raw::ffi_prep_closure_loc(
-        closure,
-        cif,
-        Some(mem::transmute::<Callback<U, R>, RawCallback>(callback)),
-        userdata as *mut c_void,
-        code.as_mut_ptr(),
-    );
+    let status = unsafe {
+        raw::ffi_prep_closure_loc(
+            closure,
+            cif,
+            Some(mem::transmute::<Callback<U, R>, RawCallback>(callback)),
+            userdata as *mut c_void,
+            code.as_mut_ptr(),
+        )
+    };
+
     status_to_result(status, ())
 }
 
@@ -603,12 +622,15 @@ pub unsafe fn prep_closure_mut<U, R>(
     userdata: *mut U,
     code: CodePtr,
 ) -> Result<()> {
-    let status = raw::ffi_prep_closure_loc(
-        closure,
-        cif,
-        Some(mem::transmute::<CallbackMut<U, R>, RawCallback>(callback)),
-        userdata as *mut c_void,
-        code.as_mut_ptr(),
-    );
+    let status = unsafe {
+        raw::ffi_prep_closure_loc(
+            closure,
+            cif,
+            Some(mem::transmute::<CallbackMut<U, R>, RawCallback>(callback)),
+            userdata as *mut c_void,
+            code.as_mut_ptr(),
+        )
+    };
+
     status_to_result(status, ())
 }

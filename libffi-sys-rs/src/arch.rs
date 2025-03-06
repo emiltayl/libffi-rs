@@ -8,7 +8,7 @@
 
 /// From libffi:src/x86/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/369ef49f71186fc9d6ab15614488ad466fac3fc1/src/x86/ffitarget.h#L80>
-mod x86 {
+mod x86_family {
     pub mod x86_win64 {
         use crate::ffi_abi;
 
@@ -93,16 +93,16 @@ mod x86 {
 }
 
 #[cfg(all(target_arch = "x86_64", windows))]
-pub use x86::x86_win64::*;
+pub use x86_family::x86_win64::*;
 
 #[cfg(all(target_arch = "x86_64", unix))]
-pub use x86::x86_64::*;
+pub use x86_family::x86_64::*;
 
 #[cfg(all(target_arch = "x86", windows))]
-pub use x86::x86_win32::*;
+pub use x86_family::x86_win32::*;
 
 #[cfg(all(target_arch = "x86", unix))]
-pub use x86::x86::*;
+pub use x86_family::x86::*;
 
 /// From libffi:src/arm/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/db5706ff285c476aa3c0f811ff2b188319ac3ebe/src/arm/ffitarget.h>
@@ -152,7 +152,8 @@ pub use aarch64::*;
 
 /// From libffi:src/powerpc/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/73dd43afc8a447ba98ea02e9aad4c6898dc77fb0/src/powerpc/ffitarget.h#L60>
-mod powerpc {
+#[expect(unexpected_cfgs, reason = "Support for non-standard target powerpc-unknown-linux-gnuspe?")]
+mod powerpc_family {
     pub mod powerpc {
         use crate::ffi_abi;
 
@@ -174,7 +175,7 @@ mod powerpc {
         #[cfg(target_env = "gnuspe")]
         use no_fprs::*;
 
-        #[cfg(not(target_feature = "gnuspe"))]
+        #[cfg(not(target_env = "gnuspe"))]
         use fprs::*;
 
         mod struct_ret {
@@ -296,10 +297,10 @@ mod powerpc {
 }
 
 #[cfg(target_arch = "powerpc")]
-pub use powerpc::powerpc::*;
+pub use powerpc_family::powerpc::*;
 
 #[cfg(target_arch = "powerpc64")]
-pub use powerpc::powerpc64::*;
+pub use powerpc_family::powerpc64::*;
 
 /// From libffi:src/riscv/ffitarget.h
 /// See: <https://github.com/libffi/libffi/blob/4cb776bc8075332d2f3e59f51785d621fcda48f6/src/riscv/ffitarget.h>
@@ -320,10 +321,7 @@ mod riscv {
     pub const FFI_NATIVE_RAW_API: u32 = 0;
 }
 
-#[cfg(target_arch = "riscv")]
-pub use riscv::*;
-
-#[cfg(target_arch = "riscv64")]
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 pub use riscv::*;
 
 /// From libffi:src/s390/ffitarget.h
@@ -366,7 +364,7 @@ pub use loongarch64::*;
 
 /// From libffi:src/mips/ffitarget.h
 /// See: <https://github.com/libffi/libffi/blob/4cb776bc8075332d2f3e59f51785d621fcda48f6/src/mips/ffitarget.h>
-mod mips {
+mod mips_family {
     mod common {
         use crate::ffi_abi;
         pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
@@ -405,7 +403,7 @@ mod mips {
 }
 
 #[cfg(any(target_arch = "mips", target_arch = "mips32r6"))]
-pub use mips::mips::*;
+pub use mips_family::mips::*;
 
 #[cfg(any(target_arch = "mips64", target_arch = "mips64r6"))]
-pub use mips::mips64::*;
+pub use mips_family::mips64::*;

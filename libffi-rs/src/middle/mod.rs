@@ -149,11 +149,13 @@ impl Cif {
             "Cif::call: passed wrong number of arguments"
         );
 
-        low::call::<R>(
-            &self.cif as *const _ as *mut _,
-            fun,
-            args.as_ptr() as *mut *mut c_void,
-        )
+        unsafe {
+            low::call::<R>(
+                &self.cif as *const _ as *mut _,
+                fun,
+                args.as_ptr() as *mut *mut c_void,
+            )
+        }
     }
 
     /// Sets the CIF to use the given calling convention.
@@ -230,7 +232,7 @@ pub struct Closure<'a> {
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> Drop for Closure<'a> {
+impl Drop for Closure<'_> {
     fn drop(&mut self) {
         unsafe {
             low::closure_free(self.alloc);
@@ -326,7 +328,7 @@ impl<'a> Closure<'a> {
     /// and cannot check whether the code pointer actually has that type.
     /// If the type is wrong then undefined behavior will result.
     pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
-        self.code.as_any_ref_()
+        unsafe { self.code.as_any_ref_() }
     }
 }
 
@@ -417,7 +419,7 @@ impl ClosureOnce {
     /// and cannot check whether the code pointer actually has that type.
     /// If the type is wrong then undefined behavior will result.
     pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
-        self.code.as_any_ref_()
+        unsafe { self.code.as_any_ref_() }
     }
 }
 
@@ -429,7 +431,7 @@ mod test {
 
     #[test]
     fn call() {
-        let cif = Cif::new(vec![Type::i64(), Type::i64()].into_iter(), Type::i64());
+        let cif = Cif::new(vec![Type::i64(), Type::i64()], Type::i64());
         let f = |m: i64, n: i64| -> i64 {
             unsafe { cif.call(CodePtr(add_it as *mut c_void), &[arg(&m), arg(&n)]) }
         };
@@ -445,7 +447,7 @@ mod test {
 
     #[test]
     fn closure() {
-        let cif = Cif::new(vec![Type::u64()].into_iter(), Type::u64());
+        let cif = Cif::new(vec![Type::u64()], Type::u64());
         let env: u64 = 5;
         let closure = Closure::new(cif, callback, &env);
 
@@ -462,12 +464,12 @@ mod test {
         userdata: &u64,
     ) {
         let args = args as *const &u64;
-        *result = **args + *userdata;
+        *result = unsafe { **args } + *userdata;
     }
 
     #[test]
     fn rust_lambda() {
-        let cif = Cif::new(vec![Type::u64(), Type::u64()].into_iter(), Type::u64());
+        let cif = Cif::new(vec![Type::u64(), Type::u64()], Type::u64());
         let env = |x: u64, y: u64| x + y;
         let closure = Closure::new(cif, callback2, &env);
 
@@ -483,8 +485,8 @@ mod test {
         userdata: &F,
     ) {
         let args = args as *const &u64;
-        let arg1 = **args.offset(0);
-        let arg2 = **args.offset(1);
+        let arg1 = unsafe { **args.offset(0) };
+        let arg2 = unsafe { **args.offset(1) };
 
         *result = userdata(arg1, arg2);
     }
@@ -499,8 +501,7 @@ mod test {
                     Type::i64(),
                 ]),
                 Type::u64(),
-            ]
-            .into_iter(),
+            ],
             Type::u64(),
         );
         let clone_cif = cif.clone();

@@ -3,3 +3,5 @@ members = [
     "libffi-rs",
     "libffi-sys-rs",
 ]
+
+resolver = "3"

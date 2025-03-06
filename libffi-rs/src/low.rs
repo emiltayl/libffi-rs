@@ -180,8 +180,8 @@ pub mod types {
 /// use libffi::low::{ffi_type, types, type_tag};
 ///
 /// let mut elements = unsafe {
-///     [ &mut types::uint16,
-///       &mut types::uint64,
+///     [ &raw mut types::uint16,
+///       &raw mut types::uint64,
 ///       ptr::null_mut::<ffi_type>() ]
 /// };
 ///
@@ -236,14 +236,14 @@ pub mod type_tag {
 /// use libffi::low::*;
 ///
 /// let mut args: [*mut ffi_type; 2] = unsafe {
-///     [ &mut types::sint32,
-///       &mut types::uint64 ]
+///     [ &raw mut types::sint32,
+///       &raw mut types::uint64 ]
 /// };
 /// let mut cif: ffi_cif = Default::default();
 ///
 /// unsafe {
 ///     prep_cif(&mut cif, ffi_abi_FFI_DEFAULT_ABI, 2,
-///              &mut types::pointer, args.as_mut_ptr())
+///              &raw mut types::pointer, args.as_mut_ptr())
 /// }.unwrap();
 /// ```
 pub unsafe fn prep_cif(
@@ -325,12 +325,12 @@ pub unsafe fn prep_cif_var(
 /// extern "C" fn c_function(a: u64, b: u64) -> u64 { a + b }
 ///
 /// let result = unsafe {
-///     let mut args: Vec<*mut ffi_type> = vec![ &mut types::uint64,
-///                                              &mut types::uint64 ];
+///     let mut args: Vec<*mut ffi_type> = vec![ &raw mut types::uint64,
+///                                              &raw mut types::uint64 ];
 ///     let mut cif: ffi_cif = Default::default();
 ///
-///     prep_cif(&mut cif, ffi_abi_FFI_DEFAULT_ABI, 2,
-///              &mut types::uint64, args.as_mut_ptr()).unwrap();
+///     prep_cif(&raw mut cif, ffi_abi_FFI_DEFAULT_ABI, 2,
+///              &raw mut types::uint64, args.as_mut_ptr()).unwrap();
 ///
 ///     call::<u64>(&mut cif, CodePtr(c_function as *mut _),
 ///          vec![ &mut 4u64 as *mut _ as *mut c_void,
@@ -482,10 +482,10 @@ pub type RawCallback = unsafe extern "C" fn(
 ///
 /// unsafe {
 ///     let mut cif: ffi_cif = Default::default();
-///     let mut args = [&mut types::uint64 as *mut _];
+///     let mut args = [&raw mut types::uint64 as *mut _];
 ///     let mut userdata: u64 = 5;
 ///
-///     prep_cif(&mut cif, ffi_abi_FFI_DEFAULT_ABI, 1, &mut types::uint64,
+///     prep_cif(&mut cif, ffi_abi_FFI_DEFAULT_ABI, 1, &raw mut types::uint64,
 ///              args.as_mut_ptr()).unwrap();
 ///
 ///     let (closure, code) = closure_alloc();
@@ -494,7 +494,7 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     prep_closure(closure,
 ///                  &mut cif,
 ///                  callback,
-///                  &mut userdata,
+///                  &raw mut userdata,
 ///                  CodePtr(add5 as *mut _)).unwrap();
 ///
 ///     assert_eq!(11, add5(6));
@@ -575,10 +575,10 @@ pub unsafe fn prep_closure<U, R>(
 ///
 /// unsafe {
 ///     let mut cif: ffi_cif = Default::default();
-///     let mut args = [&mut types::uint64 as *mut _];
+///     let mut args = [&raw mut types::uint64 as *mut _];
 ///     let mut userdata: u64 = 5;
 ///
-///     prep_cif(&mut cif, ffi_abi_FFI_DEFAULT_ABI, 1, &mut types::uint64,
+///     prep_cif(&mut cif, ffi_abi_FFI_DEFAULT_ABI, 1, &raw mut types::uint64,
 ///              args.as_mut_ptr()).unwrap();
 ///
 ///     let (closure, code) = closure_alloc();
@@ -587,7 +587,7 @@ pub unsafe fn prep_closure<U, R>(
 ///     prep_closure_mut(closure,
 ///                      &mut cif,
 ///                      callback,
-///                      &mut userdata,
+///                      &raw mut userdata,
 ///                      CodePtr(add5 as *mut _)).unwrap();
 ///
 ///     assert_eq!(5, add5(6));

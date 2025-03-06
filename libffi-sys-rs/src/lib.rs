@@ -197,7 +197,7 @@ pub struct ffi_closure {
 impl Debug for ffi_closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ffi_closure")
-            .field("tramp", unsafe { &&self.tramp.tramp[..] })
+            .field("tramp", unsafe { &self.tramp.tramp })
             .field("cif", &self.cif)
             .field("fun", &self.fun)
             .field("user_data", &self.user_data)
@@ -338,7 +338,7 @@ impl Default for ffi_go_closure {
     }
 }
 
-extern "C" {
+unsafe extern "C" {
     pub static mut ffi_type_void: ffi_type;
     pub static mut ffi_type_uint8: ffi_type;
     pub static mut ffi_type_sint8: ffi_type;
@@ -562,13 +562,13 @@ mod test {
         unsafe {
             let mut cif: ffi_cif = Default::default();
             let mut arg_types: Vec<*mut ffi_type> =
-                vec![&mut ffi_type_uint64, &mut ffi_type_uint64];
+                vec![&raw mut ffi_type_uint64, &raw mut ffi_type_uint64];
 
             let prep_status = ffi_prep_cif(
                 &mut cif,
                 ffi_abi_FFI_DEFAULT_ABI,
                 2,
-                &mut ffi_type_uint64,
+                &raw mut ffi_type_uint64,
                 arg_types.as_mut_ptr(),
             );
 

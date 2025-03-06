@@ -5,8 +5,7 @@
 //! and [`low::ffi_closure`] as [`Cif`] and [`Closure`], respectively,
 //! so that their resources are managed properly. However, calling a
 //! function via a CIF or closure is still unsafe because argument types
-//! aren’t checked. See the [`high`](crate::high) layer for closures
-//! with type-checked arguments.
+//! aren’t checked.
 
 use std::any::Any;
 use std::marker::PhantomData;

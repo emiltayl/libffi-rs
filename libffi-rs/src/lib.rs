@@ -7,11 +7,6 @@
 //! a Rust lambda (or any object implementing [`Fn`]/[`FnMut`]) into an
 //! ordinary C function pointer that we can pass as a callback to C.
 //!
-//! The easiest way to use this library is via the
-//! [`mod@high`] layer module, but more flexibility (and
-//! less checking) is provided by the [`mod@middle`] and
-//! [`mod@low`] layers.
-//!
 //! # Usage
 //!
 //! Building libffi will build lifbffi-sys, which will in turn build the
@@ -46,11 +41,8 @@
 //! provide more safety and a simpler interface than the next layer
 //! down. From top to bottom:
 //!
-//!   - The [`mod@high`] layer provides safe(?) and
-//!     automatic marshalling of Rust closures into C function pointers.
 //!   - The [`mod@middle`] layer provides memory-managed
-//!     abstractions for assembling calls and closures, but is unsafe
-//!     because it doesn’t check argument types.
+//!     abstractions for assembling calls and closures.
 //!   - The [`mod@low`] layer makes no attempts at safety,
 //!     but provides a more idiomatically “Rusty” API than the underlying
 //!     C library.
@@ -65,21 +57,7 @@
 //!
 //! # Examples
 //!
-//! In this example, we convert a Rust lambda containing a free variable
-//! into an ordinary C code pointer. The type of `fun` below is
-//! `extern "C" fn(u64, u64) -> u64`.
-//!
-//! ```
-//! use libffi::high::Closure2;
-//!
-//! let x = 5u64;
-//! let f = |y: u64, z: u64| x + y + z;
-//!
-//! let closure = Closure2::new(&f);
-//! let fun     = closure.code_ptr();
-//!
-//! assert_eq!(18, fun.call(6, 7));
-//! ```
+//! TODO new examples with middle and low.
 //!
 //! [the `libffi-sys` crate]: https://crates.io/crates/libffi-sys/
 //!
@@ -96,6 +74,5 @@ pub mod raw {
     pub use libffi_sys::*;
 }
 
-pub mod high;
 pub mod low;
 pub mod middle;

@@ -69,6 +69,7 @@ pub fn build_and_link() {
         .define("WIN32", None)
         .define("_LIB", None)
         .define("FFI_BUILDING", None)
+        .define("FFI_STATIC_BUILD", None)
         .warnings(false)
         .compile("libffi");
 }

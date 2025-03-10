@@ -37,7 +37,7 @@
 //!
 //! to your `Cargo.toml` instead.
 //!
-//! This crate supports Rust version 1.32 and later.
+//! This crate supports Rust version 1.85 and later.
 
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -357,13 +357,15 @@ unsafe extern "C" {
     pub static mut ffi_type_longdouble: ffi_type;
 
     #[cfg(feature = "complex")]
+    #[cfg(not(target_env = "msvc"))]
     pub static mut ffi_type_complex_float: ffi_type;
 
     #[cfg(feature = "complex")]
+    #[cfg(not(target_env = "msvc"))]
     pub static mut ffi_type_complex_double: ffi_type;
 
     #[cfg(feature = "complex")]
-    #[cfg(not(all(target_arch = "arm", target_os = "linux", target_env = "gnu")))]
+    #[cfg(not(any(target_arch = "arm", target_env = "msvc")))]
     pub static mut ffi_type_complex_longdouble: ffi_type;
 
     pub fn ffi_raw_call(

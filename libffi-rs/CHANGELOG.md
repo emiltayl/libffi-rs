@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog] and this project adheres to
 ## Rejuvenation project
 - Deleted `high` module
 - Upgraded to Rust 2024 edition, set MSRV to 1.85
+- Added new variants to `Error` enum and made it `non_exhaustive`
 
 ## [3.2.0] - 2023-03-28
 

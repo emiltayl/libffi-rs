@@ -16,7 +16,7 @@ libffi-sys = { path = "../libffi-sys-rs", version = "^2.3" }
 libc = "0.2.65"
 
 [features]
-complex = []
+complex = ["libffi-sys/complex"]
 system = ["libffi-sys/system"]
 
 [package.metadata.docs.rs]

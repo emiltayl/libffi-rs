@@ -399,25 +399,30 @@ impl Type {
 
     /// Returns the C `_Complex float` type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
+    /// This item is enabled by `#[cfg(feature = "complex")]`. It is not available when building for
+    /// msvc.
     #[cfg(feature = "complex")]
+    #[cfg(not(target_env = "msvc"))]
     pub fn c32() -> Self {
         Type(unsafe { Unique::new(&raw mut low::types::complex_float) })
     }
 
     /// Returns the C `_Complex double` type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
+    /// This item is enabled by `#[cfg(feature = "complex")]`. It is not available when building for
+    /// msvc.
     #[cfg(feature = "complex")]
+    #[cfg(not(target_env = "msvc"))]
     pub fn c64() -> Self {
         Type(unsafe { Unique::new(&raw mut low::types::complex_double) })
     }
 
     /// Returns the C `_Complex long double` type.
     ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`.
+    /// This item is enabled by `#[cfg(feature = "complex")]`. It is not available when building for
+    /// msvc or the arm arch.
     #[cfg(feature = "complex")]
-    #[cfg(not(all(target_arch = "arm")))]
+    #[cfg(not(any(target_arch = "arm", target_env = "msvc")))]
     pub fn complex_longdouble() -> Self {
         Type(unsafe { Unique::new(&raw mut low::types::complex_longdouble) })
     }

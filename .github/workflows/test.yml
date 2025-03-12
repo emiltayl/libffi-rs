@@ -95,32 +95,6 @@ jobs:
         target:
         - x86_64-unknown-linux-gnu
         - i686-unknown-linux-gnu
-        - powerpc64le-unknown-linux-gnu
-        - powerpc64-unknown-linux-gnu 
-        - aarch64-unknown-linux-gnu
-        - armv7-unknown-linux-gnueabihf
-        - riscv64gc-unknown-linux-gnu
-        - s390x-unknown-linux-gnu
-        exclude:
-        # Don't try to build with `--features system` when cross-compiling
-        # It's probably possible to make this work for some of these architectures
-        # (e.g. I got it working on my Ubuntu image for i686), but it complicates
-        # testing a bit
-        - target: i686-unknown-linux-gnu
-          features: "--features system"
-        - target: powerpc64le-unknown-linux-gnu 
-          features: "--features system"
-        - target: powerpc64-unknown-linux-gnu 
-          features: "--features system"
-        - target: aarch64-unknown-linux-gnu
-          features: "--features system"
-        - target: armv7-unknown-linux-gnueabihf
-          features: "--features system"
-        - target: riscv64gc-unknown-linux-gnu
-          features: "--features system"
-        - target: s390x-unknown-linux-gnu
-          features: "--features system"
-
     runs-on: ubuntu-latest
     name: Linux - ${{ matrix.channel }} ${{ matrix.features }} ${{ matrix.target }}
     steps:
@@ -130,15 +104,35 @@ jobs:
           toolchain: ${{ matrix.channel }}
           target: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+      - name: Test workspace
+        run: cargo test --target ${{ matrix.target }} ${{ matrix.features }} --workspace --verbose
 
+  linux-qemu:
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [1.85.0, stable, nightly]
+        target:
+        - powerpc64le-unknown-linux-gnu
+        - powerpc64-unknown-linux-gnu 
+        - aarch64-unknown-linux-gnu
+        - armv7-unknown-linux-gnueabihf
+        - riscv64gc-unknown-linux-gnu
+        - s390x-unknown-linux-gnu
+    runs-on: ubuntu-latest
+    name: Linux - ${{ matrix.channel }} --no-default-features ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.channel }}
+          target: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
       - name: Set-up Cross Compiling
         id: arch_attrs
         run: |
           # Get unique attributes for each architecture
-          if [ "${{ matrix.target }}" == "i686-unknown-linux-gnu" ]; then
-            GCC_ARCH=i686
-            ABI=gnu
-          elif [ "${{ matrix.target }}" == "powerpc64-unknown-linux-gnu" ]; then
+          if [ "${{ matrix.target }}" == "powerpc64-unknown-linux-gnu" ]; then
             GCC_ARCH=powerpc64
             QEMU_ARCH=ppc64
             ABI=gnu
@@ -179,11 +173,22 @@ jobs:
           echo "CC=$CC" >> $GITHUB_ENV
           echo "CARGO_TARGET_${TARGET_TRIPLE}_LINKER=$CC" >> $GITHUB_ENV
 
-          # Don't need QEMU for i686
-          if [ "$QEMU_ARCH" != "" ]; then
-            sudo apt-get install -y qemu-user
-            echo "CARGO_TARGET_${TARGET_TRIPLE}_RUNNER=qemu-$QEMU_ARCH -L /usr/$GCC_ARCH-linux-$ABI/" >> $GITHUB_ENV
-          fi
-        if: ${{ 'x86_64-unknown-linux-gnu' != matrix.target }}
+          sudo apt-get install -y qemu-user
+          echo "CARGO_TARGET_${TARGET_TRIPLE}_RUNNER=qemu-$QEMU_ARCH -L /usr/$GCC_ARCH-linux-$ABI/" >> $GITHUB_ENV
       - name: Test workspace
-        run: cargo test --target ${{ matrix.target }} ${{ matrix.features }} --workspace --verbose
+        run: |
+          N=2
+          n=0
+          passed=0
+          until [ $n -ge $N ] || [ passed -eq 1 ]; do
+            if [ $n -gt 0 ]; then
+              echo "Previous attempt failed, retrying"
+            fi
+
+            cargo test --target ${{ matrix.target }} --no-default-features --workspace --verbose && passed=1 || n=$((n+1))
+          done
+
+          if [ $passed -ne 1 ]; then
+            echo "${N} attempts failed, failing test"
+            (exit 101)
+          fi

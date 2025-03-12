@@ -1,29 +1,32 @@
 //! Representations of C types and arrays thereof.
 //!
-//! These are used to describe the types of the arguments and results of
-//! functions. When we construct a [CIF](super::Cif) (“Call
-//! Inter<span></span>Face”), we provide a sequence of argument types
-//! and a result type, and libffi uses this to figure out how to set up
-//! a call to a function with those types.
+//! These are used to describe the types of the arguments and results of functions. When we
+//! construct a [CIF](super::Cif), we provide a sequence of argument types and a result type, and
+//! libffi uses this to figure out how to set up a call to a function with those types.
+//!
+//! *[CIF]: Call InterFace
 
-use libc;
-use std::fmt;
-use std::mem;
-use std::ptr;
+#![allow(
+    clippy::all,
+    clippy::undocumented_unsafe_blocks,
+    clippy::ptr_as_ptr,
+    clippy::doc_markdown,
+    reason = "Disable clippy lints until this module can be rewritten."
+)]
+// TODO Rewrite this module
 
-use crate::low;
+use std::{fmt, mem, ptr};
 
 use super::util::Unique;
+use crate::low;
 
-// Internally we represent types and type arrays using raw pointers,
-// since this is what libffi understands. Below we wrap them with
-// types that implement Drop and Clone.
+// Internally we represent types and type arrays using raw pointers, since this is what libffi
+// understands. Below we wrap them with types that implement Drop and Clone.
 
 type Type_ = *mut low::ffi_type;
 type TypeArray_ = *mut Type_;
 
-// Informal indication that the object should be considered owned by
-// the given reference.
+// Informal indication that the object should be considered owned by the given reference.
 type Owned<T> = T;
 
 /// Represents a single C type.
@@ -39,23 +42,19 @@ type Owned<T> = T;
 /// };
 /// ```
 ///
-/// To pass the struct by value via libffi, we need to construct a
-/// `Type` object describing its layout:
+/// To pass the struct by value via libffi, we need to construct a `Type` object describing its
+/// layout:
 ///
 /// ```
 /// use libffi::middle::Type;
 ///
-/// let my_struct = Type::structure(vec![
-///     Type::u64(),
-///     Type::u16(),
-/// ]);
+/// let my_struct = Type::structure(vec![Type::u64(), Type::u16()]);
 /// ```
 pub struct Type(Unique<low::ffi_type>);
 
 /// Represents a sequence of C types.
 ///
-/// This can be used to construct a struct type or as the arguments
-/// when creating a [`Cif`].
+/// This can be used to construct a struct type or as the arguments when creating a [`Cif`].
 pub struct TypeArray(Unique<*mut low::ffi_type>);
 
 impl fmt::Debug for Type {
@@ -70,10 +69,10 @@ impl fmt::Debug for TypeArray {
     }
 }
 
-/// Computes the length of a raw `TypeArray_` by searching for the
-/// null terminator.
+/// Computes the length of a raw `TypeArray_` by searching for the null terminator.
 unsafe fn ffi_type_array_len(mut array: TypeArray_) -> usize {
     let mut count = 0;
+
     unsafe {
         while !(*array).is_null() {
             count += 1;
@@ -85,17 +84,18 @@ unsafe fn ffi_type_array_len(mut array: TypeArray_) -> usize {
 
 /// Creates an empty `TypeArray_` with null terminator.
 unsafe fn ffi_type_array_create_empty(len: usize) -> Owned<TypeArray_> {
-    let array = unsafe { libc::malloc((len + 1) * mem::size_of::<Type_>()) as TypeArray_ };
+    let array = unsafe { libc::malloc((len + 1) * size_of::<Type_>()) as TypeArray_ };
     assert!(
         !array.is_null(),
         "ffi_type_array_create_empty: out of memory"
     );
-    unsafe { *array.add(len) = ptr::null_mut::<low::ffi_type>() as Type_ };
+    unsafe {
+        *array.add(len) = ptr::null_mut::<low::ffi_type>() as Type_;
+    }
     array
 }
 
-/// Creates a null-terminated array of Type_. Takes ownership of
-/// the elements.
+/// Creates a null-terminated array of Type_. Takes ownership of the elements.
 unsafe fn ffi_type_array_create<I>(elements: I) -> Owned<TypeArray_>
 where
     I: ExactSizeIterator<Item = Type>,
@@ -103,7 +103,9 @@ where
     let size = elements.len();
     let new = unsafe { ffi_type_array_create_empty(size) };
     for (i, element) in elements.enumerate() {
-        unsafe { *new.add(i) = *element.0 };
+        unsafe {
+            *new.add(i) = *element.0;
+        }
         mem::forget(element);
     }
 
@@ -116,7 +118,7 @@ unsafe fn ffi_type_struct_create_raw(
     size: usize,
     alignment: u16,
 ) -> Owned<Type_> {
-    let new = unsafe { libc::malloc(mem::size_of::<low::ffi_type>()) as Type_ };
+    let new = unsafe { libc::malloc(size_of::<low::ffi_type>()) as Type_ };
     assert!(!new.is_null(), "ffi_type_struct_create_raw: out of memory");
 
     unsafe {
@@ -129,8 +131,7 @@ unsafe fn ffi_type_struct_create_raw(
     new
 }
 
-/// Creates a struct `ffi_type` with the given elements. Takes ownership
-/// of the elements.
+/// Creates a struct `ffi_type` with the given elements. Takes ownership of the elements.
 unsafe fn ffi_type_struct_create<I>(elements: I) -> Owned<Type_>
 where
     I: ExactSizeIterator<Item = Type>,
@@ -244,8 +245,8 @@ macro_rules! match_size_unsigned {
 impl Type {
     /// Returns the representation of the C `void` type.
     ///
-    /// This is used only for the return type of a [CIF](super::Cif),
-    /// not for an argument or struct member.
+    /// This is used only for the return type of a [CIF](super::Cif), not for an argument or struct
+    /// member.
     pub fn void() -> Self {
         Type(unsafe { Unique::new(&raw mut low::types::void) })
     }
@@ -438,8 +439,8 @@ impl Type {
 
     /// Gets a raw pointer to the underlying [`low::ffi_type`].
     ///
-    /// This method may be useful for interacting with the
-    /// [`low`](crate::low) and [`raw`](crate::raw) layers.
+    /// This method may be useful for interacting with the [`low`](crate::low) and
+    /// [`raw`](crate::raw) layers.
     pub fn as_raw_ptr(&self) -> *mut low::ffi_type {
         *self.0
     }
@@ -455,13 +456,12 @@ impl TypeArray {
         TypeArray(unsafe { Unique::new(ffi_type_array_create(elements.into_iter())) })
     }
 
-    /// Gets a raw pointer to the underlying C array of
-    /// [`low::ffi_type`]s.
+    /// Gets a raw pointer to the underlying C array of [`low::ffi_type`]s.
     ///
     /// The C array is null-terminated.
     ///
-    /// This method may be useful for interacting with the
-    /// [`low`](crate::low) and [`raw`](crate::raw) layers.
+    /// This method may be useful for interacting with the [`low`](crate::low) and
+    /// [`raw`](crate::raw) layers.
     pub fn as_raw_ptr(&self) -> *mut *mut low::ffi_type {
         *self.0
     }

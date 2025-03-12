@@ -21,18 +21,16 @@ use super::types::Type;
 /// # Examples
 ///
 /// ```
-/// use std::mem;
-/// use std::os::raw::c_void;
+/// use std::{mem, os::raw::c_void};
 ///
-/// use libffi::middle::*;
-/// use libffi::low;
+/// use libffi::{low, middle::*};
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
 ///     result: &mut u64,
 ///     args: *const *const c_void,
-///     userdata: &F)
-/// {
+///     userdata: &F,
+/// ) {
 ///     let args: *const &u64 = mem::transmute(args);
 ///     let arg1 = **args.offset(0);
 ///     let arg2 = **args.offset(1);
@@ -49,8 +47,7 @@ use super::types::Type;
 ///     .into_closure(lambda_callback, &lambda);
 ///
 /// unsafe {
-///     let fun: &unsafe extern "C" fn(u64, u64) -> u64
-///         = mem::transmute(closure.code_ptr());
+///     let fun: &unsafe extern "C" fn(u64, u64) -> u64 = mem::transmute(closure.code_ptr());
 ///
 ///     assert_eq!(11, fun(5, 6));
 ///     assert_eq!(12, fun(5, 7));
@@ -80,12 +77,14 @@ impl Builder {
     }
 
     /// Adds a type to the argument type list.
+    #[must_use]
     pub fn arg(mut self, type_: Type) -> Self {
         self.args.push(type_);
         self
     }
 
     /// Adds several types to the argument type list.
+    #[must_use]
     pub fn args<I>(mut self, types: I) -> Self
     where
         I: IntoIterator<Item = Type>,
@@ -95,12 +94,14 @@ impl Builder {
     }
 
     /// Sets the result type.
+    #[must_use]
     pub fn res(mut self, type_: Type) -> Self {
         self.res = type_;
         self
     }
 
     /// Sets the calling convention.
+    #[must_use]
     pub fn abi(mut self, abi: super::FfiAbi) -> Self {
         self.abi = abi;
         self
@@ -118,8 +119,8 @@ impl Builder {
     /// # Arguments
     ///
     /// - `callback` — the function to call when the closure is invoked
-    /// - `userdata` — the pointer to pass to `callback` along with the
-    ///   arguments when the closure is called
+    /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
+    ///   is called
     ///
     /// # Result
     ///
@@ -137,8 +138,8 @@ impl Builder {
     /// # Arguments
     ///
     /// - `callback` — the function to call when the closure is invoked
-    /// - `userdata` — the pointer to pass to `callback` along with the
-    ///   arguments when the closure is called
+    /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
+    ///   is called
     ///
     /// # Result
     ///
@@ -156,8 +157,8 @@ impl Builder {
     /// # Arguments
     ///
     /// - `callback` — the function to call when the closure is invoked
-    /// - `userdata` — the object to pass to `callback` along with the
-    ///   arguments when the closure is called
+    /// - `userdata` — the object to pass to `callback` along with the arguments when the closure is
+    ///   called
     ///
     /// # Result
     ///

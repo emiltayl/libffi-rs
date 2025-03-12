@@ -9,9 +9,11 @@ The format is based on [Keep a Changelog] and this project adheres to
 [Semantic Versioning]: http://semver.org/spec/v2.0.0.html
 
 ## Rejuvenation project
+- Upgraded libffi to version 3.4.7
 - Deleted `high` module
 - Upgraded to Rust 2024 edition, set MSRV to 1.85
 - Added new variants to `Error` enum and made it `non_exhaustive`
+- Added `#[must-use]` to `middle::builder::Builder` functions
 
 ## [3.2.0] - 2023-03-28
 

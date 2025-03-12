@@ -1,8 +1,9 @@
-use crate::common::*;
 use std::{
     path::{Path, PathBuf},
     process::Command,
 };
+
+use crate::common::{env, fs, run_command};
 
 pub fn build_and_link() {
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -16,8 +17,7 @@ pub fn build_and_link() {
         assert_eq!(
             e.kind(),
             std::io::ErrorKind::NotFound,
-            "can't remove the build directory: {}",
-            e
+            "can't remove the build directory: {e}",
         );
     }
 
@@ -29,9 +29,11 @@ pub fn build_and_link() {
         let output = Command::new("cp").arg("--help").output().unwrap().stdout;
         String::from_utf8(output).unwrap().contains("--no-preserve")
     };
+
     if has_no_preserve_flag {
         command.arg("--no-preserve=mode,ownership");
-    };
+    }
+
     run_command(
         "Copying libffi into the build directory",
         command.arg("-R").arg("libffi").arg(&build_dir),
@@ -67,8 +69,8 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
         .arg("--disable-shared")
         .arg("--disable-docs");
 
-    let target = std::env::var("TARGET").unwrap();
-    let host = std::env::var("HOST").unwrap();
+    let target = env::var("TARGET").unwrap();
+    let host = env::var("HOST").unwrap();
     if target != host {
         let cross_host = match target.as_str() {
             // Autoconf uses riscv64 while Rust uses riscv64gc for the architecture
@@ -81,7 +83,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             // Everything else should be fine to pass straight through
             other => other,
         };
-        command.arg(format!("--host={}", cross_host));
+        command.arg(format!("--host={cross_host}"));
     }
 
     let mut c_cfg = cc::Build::new();
@@ -107,7 +109,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
     }
     command.env("CFLAGS", cflags);
 
-    for (k, v) in c_compiler.env().iter() {
+    for (k, v) in c_compiler.env() {
         command.env(k, v);
     }
 
@@ -126,7 +128,7 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             .to_str()
             .unwrap()
             .replace(":\\", "/")
-            .replace("\\", "/");
+            .replace('\\', "/");
 
         msys_prefix.insert(0, '/');
 

@@ -1,10 +1,10 @@
-//! This module defines the different ffi_abi values for each platform.
+//! This module defines the different [`ffi_abi`] values for each platform.
 //!
 //! This module is set-up to define all the constants for each platform, but only export those which
 //! are actually relevant to the target arch. This is done as a compile check to ensure the code
 //! paths in less utilized architectures largely continue to compile.
 
-#![allow(unused)]
+#![allow(unused, reason = "Values are re-exported.")]
 
 /// From libffi:src/x86/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/369ef49f71186fc9d6ab15614488ad466fac3fc1/src/x86/ffitarget.h#L80>
@@ -92,17 +92,14 @@ mod x86_family {
     pub const FFI_GO_CLOSURES: u32 = 1;
 }
 
-#[cfg(all(target_arch = "x86_64", windows))]
-pub use x86_family::x86_win64::*;
-
-#[cfg(all(target_arch = "x86_64", unix))]
-pub use x86_family::x86_64::*;
-
-#[cfg(all(target_arch = "x86", windows))]
-pub use x86_family::x86_win32::*;
-
 #[cfg(all(target_arch = "x86", unix))]
 pub use x86_family::x86::*;
+#[cfg(all(target_arch = "x86_64", unix))]
+pub use x86_family::x86_64::*;
+#[cfg(all(target_arch = "x86", windows))]
+pub use x86_family::x86_win32::*;
+#[cfg(all(target_arch = "x86_64", windows))]
+pub use x86_family::x86_win64::*;
 
 /// From libffi:src/arm/ffitarget.h.
 /// See: <https://github.com/libffi/libffi/blob/db5706ff285c476aa3c0f811ff2b188319ac3ebe/src/arm/ffitarget.h>
@@ -161,11 +158,11 @@ mod powerpc_family {
         use crate::ffi_abi;
 
         pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
-        pub const ffi_abi_FFI_SYSV_SOFT_FLOAT: ffi_abi = 0b000001;
-        pub const ffi_abi_FFI_SYSV_STRUCT_RET: ffi_abi = 0b000010;
-        pub const ffi_abi_FFI_SYSV_IBM_LONG_DOUBLE: ffi_abi = 0b000100;
-        pub const ffi_abi_FFI_SYSV: ffi_abi = 0b001000;
-        pub const ffi_abi_FFI_SYSV_LONG_DOUBLE_128: ffi_abi = 0b010000;
+        pub const ffi_abi_FFI_SYSV_SOFT_FLOAT: ffi_abi = 0b00_0001;
+        pub const ffi_abi_FFI_SYSV_STRUCT_RET: ffi_abi = 0b00_0010;
+        pub const ffi_abi_FFI_SYSV_IBM_LONG_DOUBLE: ffi_abi = 0b00_0100;
+        pub const ffi_abi_FFI_SYSV: ffi_abi = 0b00_1000;
+        pub const ffi_abi_FFI_SYSV_LONG_DOUBLE_128: ffi_abi = 0b01_0000;
 
         mod fprs {
             pub const SOFT_FLOAT_FLAG: crate::ffi_abi = 0b0;
@@ -175,11 +172,10 @@ mod powerpc_family {
             pub const SOFT_FLOAT_FLAG: crate::ffi_abi = super::ffi_abi_FFI_SYSV_SOFT_FLOAT;
         }
 
-        #[cfg(target_env = "gnuspe")]
-        use no_fprs::*;
-
         #[cfg(not(target_env = "gnuspe"))]
-        use fprs::*;
+        use fprs::SOFT_FLOAT_FLAG;
+        #[cfg(target_env = "gnuspe")]
+        use no_fprs::SOFT_FLOAT_FLAG;
 
         mod struct_ret {
             pub const STRUCT_RET_FLAG: crate::ffi_abi = super::ffi_abi_FFI_SYSV_STRUCT_RET;
@@ -189,11 +185,10 @@ mod powerpc_family {
             pub const STRUCT_RET_FLAG: crate::ffi_abi = 0b0;
         }
 
-        #[cfg(target_os = "netbsd")]
-        use struct_ret::*;
-
         #[cfg(not(target_os = "netbsd"))]
-        use no_struct_ret::*;
+        use no_struct_ret::STRUCT_RET_FLAG;
+        #[cfg(target_os = "netbsd")]
+        use struct_ret::STRUCT_RET_FLAG;
 
         mod long_double_64 {
             pub const LONG_DOUBLE_128_FLAG: crate::ffi_abi = 0b0;
@@ -208,10 +203,9 @@ mod powerpc_family {
         // https://github.com/rust-lang/llvm-project/blob/cb7f903994646c5b9223e0bb6cee3792190991f7/clang/lib/Basic/Targets/PPC.h#L379
 
         #[cfg(any(target_os = "netbsd", target_os = "freebsd", target_env = "musl"))]
-        use long_double_64::*;
-
+        use long_double_64::LONG_DOUBLE_128_FLAG;
         #[cfg(not(any(target_os = "netbsd", target_os = "freebsd", target_env = "musl")))]
-        use long_double_128::*;
+        use long_double_128::LONG_DOUBLE_128_FLAG;
 
         pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV
             | ffi_abi_FFI_SYSV_IBM_LONG_DOUBLE
@@ -228,10 +222,10 @@ mod powerpc_family {
         use crate::ffi_abi;
 
         pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
-        pub const ffi_abi_FFI_LINUX_STRUCT_ALIGN: ffi_abi = 0b000001;
-        pub const ffi_abi_FFI_LINUX_LONG_DOUBLE_128: ffi_abi = 0b000010;
-        pub const ffi_abi_FFI_LINUX_LONG_DOUBLE_IEEE128: ffi_abi = 0b000100;
-        pub const ffi_abi_FFI_LINUX: ffi_abi = 0b001000;
+        pub const ffi_abi_FFI_LINUX_STRUCT_ALIGN: ffi_abi = 0b00_0001;
+        pub const ffi_abi_FFI_LINUX_LONG_DOUBLE_128: ffi_abi = 0b00_0010;
+        pub const ffi_abi_FFI_LINUX_LONG_DOUBLE_IEEE128: ffi_abi = 0b00_0100;
+        pub const ffi_abi_FFI_LINUX: ffi_abi = 0b00_1000;
 
         mod elfv1 {
             pub const STRUCT_ALIGN_FLAG: crate::ffi_abi = 0b0;
@@ -286,10 +280,9 @@ mod powerpc_family {
         // https://github.com/rust-lang/llvm-project/blob/cb7f903994646c5b9223e0bb6cee3792190991f7/clang/lib/Basic/Targets/PPC.h#L417
 
         #[cfg(any(target_os = "netbsd", target_os = "freebsd", target_env = "musl"))]
-        use long_double_64::*;
-
+        use long_double_64::LONG_DOUBLE_128_FLAG;
         #[cfg(not(any(target_os = "netbsd", target_os = "freebsd", target_env = "musl")))]
-        use long_double_128::*;
+        use long_double_128::LONG_DOUBLE_128_FLAG;
 
         pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi =
             ffi_abi_FFI_LINUX | STRUCT_ALIGN_FLAG | LONG_DOUBLE_128_FLAG;
@@ -301,7 +294,6 @@ mod powerpc_family {
 
 #[cfg(target_arch = "powerpc")]
 pub use powerpc_family::powerpc::*;
-
 #[cfg(target_arch = "powerpc64")]
 pub use powerpc_family::powerpc64::*;
 
@@ -385,9 +377,8 @@ mod mips_family {
     }
 
     pub mod mips {
-        use crate::ffi_abi;
-
         pub use super::common::*;
+        use crate::ffi_abi;
 
         pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_O32;
 
@@ -395,9 +386,8 @@ mod mips_family {
     }
 
     pub mod mips64 {
-        use crate::ffi_abi;
-
         pub use super::common::*;
+        use crate::ffi_abi;
 
         pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_N64;
 
@@ -407,6 +397,5 @@ mod mips_family {
 
 #[cfg(any(target_arch = "mips", target_arch = "mips32r6"))]
 pub use mips_family::mips::*;
-
 #[cfg(any(target_arch = "mips64", target_arch = "mips64r6"))]
 pub use mips_family::mips64::*;

@@ -190,7 +190,7 @@ jobs:
           N=2
           n=0
           passed=0
-          until [ $n -ge $N ] || [ passed -eq 1 ]; do
+          until [ $n -ge $N ] || [ $passed -eq 1 ]; do
             if [ $n -gt 0 ]; then
               echo "Previous attempt failed, retrying"
             fi

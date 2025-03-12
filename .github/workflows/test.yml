@@ -95,6 +95,9 @@ jobs:
         target:
         - x86_64-unknown-linux-gnu
         - i686-unknown-linux-gnu
+        exclude:
+        - target: i686-unknown-linux-gnu
+          features: "--features system"
     runs-on: ubuntu-latest
     name: Linux - ${{ matrix.channel }} ${{ matrix.features }} ${{ matrix.target }}
     steps:
@@ -104,6 +107,13 @@ jobs:
           toolchain: ${{ matrix.channel }}
           target: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+      - name: Set up compilation dependencies
+        run: |
+          sudo apt-get install -y gcc-13-i686-linux-gnu
+          CC="i686-linux-gnu-gcc-13"
+          echo "CC=${CC}" >> $GITHUB_ENV
+          echo "CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER=${CC}" >> $GITHUB_ENV
+        if: ${{ 'i686-unknown-linux-gnu' == matrix.target }}
       - name: Test workspace
         run: cargo test --target ${{ matrix.target }} ${{ matrix.features }} --workspace --verbose
 

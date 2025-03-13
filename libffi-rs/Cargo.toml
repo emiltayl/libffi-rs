@@ -13,7 +13,6 @@ rust-version = "1.85"
 
 [dependencies]
 libffi-sys = { path = "../libffi-sys-rs", version = "^2.3" }
-libc = "0.2.65"
 
 [features]
 complex = ["libffi-sys/complex"]

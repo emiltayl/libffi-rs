@@ -7,8 +7,10 @@
 //! function via a CIF or closure is still unsafe because argument types
 //! aren’t checked.
 
-use core::ptr;
-use std::{any::Any, marker::PhantomData, os::raw::c_void};
+extern crate alloc;
+#[cfg(not(test))]
+use alloc::boxed::Box;
+use core::{any::Any, ffi::c_void, marker::PhantomData, ptr};
 
 use crate::low;
 pub use crate::low::{Callback, CallbackMut, CodePtr, ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI};

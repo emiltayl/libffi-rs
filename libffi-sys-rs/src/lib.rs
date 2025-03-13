@@ -1,3 +1,4 @@
+#![cfg_attr(not(test), no_std)]
 #![doc(html_root_url = "https://docs.rs/libffi-sys/2.3.0")]
 //! Low-level Rust bindings for [libffi](https://sourceware.org/libffi/)
 //!
@@ -48,10 +49,10 @@
     reason = "Documenting libffi's types and constants is currently not a priority."
 )]
 
-use std::{
+use core::{
+    ffi::{c_char, c_int, c_long, c_schar, c_uint, c_ulong, c_ushort, c_void},
     fmt::{self, Debug},
     mem::zeroed,
-    os::raw::{c_char, c_int, c_long, c_schar, c_uint, c_ulong, c_ushort, c_void},
 };
 
 mod arch;

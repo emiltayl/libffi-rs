@@ -1,4 +1,9 @@
-use std::any::Any;
+extern crate alloc;
+
+use alloc::vec;
+#[cfg(not(test))]
+use alloc::vec::Vec;
+use core::any::Any;
 
 use super::types::Type;
 

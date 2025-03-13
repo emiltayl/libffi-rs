@@ -1,3 +1,4 @@
+#![cfg_attr(not(test), no_std)]
 #![doc(html_root_url = "https://docs.rs/libffi/3.2.0")]
 //! Rust bindings for [libffi](https://sourceware.org/libffi/).
 //!

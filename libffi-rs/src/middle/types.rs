@@ -8,6 +8,10 @@
 //! *[CIF]: Call InterFace
 use core::{mem, slice};
 
+extern crate alloc;
+#[cfg(not(test))]
+use alloc::boxed::Box;
+
 #[cfg(miri)]
 use miri::{
     double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64, void,
@@ -373,7 +377,7 @@ impl Type {
 pub(crate) struct RawType(pub(crate) *mut ffi_type);
 
 impl core::fmt::Debug for RawType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.0.is_null() {
             write!(f, "RawType(NULL)")
         } else {

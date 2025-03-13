@@ -6,9 +6,9 @@
 //! [`raw`](crate::raw), I’ve avoided drastic renaming in favor of hewing close to the libffi API.
 //! See [`middle`](crate::middle) for an easier-to-use approach.
 
-use std::{
+use core::{
+    ffi::{c_uint, c_void},
     mem,
-    os::raw::{c_uint, c_void},
 };
 
 use crate::raw;
@@ -28,7 +28,7 @@ pub enum Error {
 }
 
 /// The [`std::result::Result`] type specialized for libffi [`Error`]s.
-pub type Result<T> = ::std::result::Result<T, Error>;
+pub type Result<T> = core::result::Result<T, Error>;
 
 // Converts the raw status type to a `Result`.
 fn status_to_result<R>(status: ffi_status, good: R) -> Result<R> {
@@ -204,7 +204,7 @@ pub mod types {
 /// my_struct.elements = elements.as_mut_ptr();
 /// ```
 pub mod type_tag {
-    use std::os::raw::c_ushort;
+    use core::ffi::c_ushort;
 
     use crate::raw;
 

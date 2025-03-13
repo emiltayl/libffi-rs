@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog] and this project adheres to
 - Upgraded to Rust 2024 edition, set MSRV to 1.85
 - Added new variants to `Error` enum and made it `non_exhaustive`
 - Added `#[must-use]` to `middle::builder::Builder` functions
+- Reworked the `middle` module
+  * The API is similar to the old `middle` API, but some data types and function signatures have
+    been changed. See the documentation for updated definitions.
+  * Deprecated many functions in `middle::Type`, preferring the usage of enum variants where
+    possible, but it is still possible to use the old functions for backwards compatibility reasons.
 
 ## [3.2.0] - 2023-03-28
 

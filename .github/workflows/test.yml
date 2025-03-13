@@ -23,6 +23,25 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-features -- -D warnings
 
+  miri:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+        - ubuntu-latest
+        - macos-latest
+        - windows-latest
+    runs-on: ${{ matrix.runner }}
+    name: Miri tests - ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Miri tests
+        run: cargo miri test --lib --workspace --verbose
+
   windows-msvc:
     strategy:
       fail-fast: false

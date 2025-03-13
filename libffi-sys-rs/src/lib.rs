@@ -564,7 +564,7 @@ unsafe extern "C" {
     ) -> ffi_status;
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     use super::*;
 

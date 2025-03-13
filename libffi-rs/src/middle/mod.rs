@@ -13,8 +13,6 @@ use std::{any::Any, marker::PhantomData, os::raw::c_void};
 use crate::low;
 pub use crate::low::{Callback, CallbackMut, CodePtr, ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI};
 
-mod util;
-
 mod types;
 pub use types::Type;
 
@@ -64,55 +62,45 @@ pub fn arg<T>(r: &T) -> Arg {
 ///
 /// use libffi::middle::*;
 ///
-/// let args = vec![Type::f64(), Type::pointer()];
-/// let cif = Cif::new(args.into_iter(), Type::f64());
+/// let args = [Type::F64, Type::Pointer];
+/// let cif = Cif::new(&args, Type::F64);
 ///
 /// let n = unsafe { cif.call(CodePtr(add as *mut _), &[arg(&5f64), arg(&&6f64)]) };
 /// assert_eq!(11f64, n);
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Cif {
     cif: low::ffi_cif,
-    args: types::TypeArray,
-    result: Type,
-}
-
-// To clone a Cif we need to clone the types and then make sure the new ffi_cif refers to the clones
-// of the types.
-impl Clone for Cif {
-    fn clone(&self) -> Self {
-        let mut copy = Cif {
-            cif: self.cif,
-            args: self.args.clone(),
-            result: self.result.clone(),
-        };
-
-        copy.cif.arg_types = copy.args.as_raw_ptr();
-        copy.cif.rtype = copy.result.as_raw_ptr();
-
-        copy
-    }
+    _args: Box<[types::RawType]>,
+    _result: types::RawType,
 }
 
 impl Cif {
-    /// Creates a new [CIF](Cif) for the given argument and result types.
+    /// Creates a new [CIF](Cif) for the given argument and result types. [`Cif`] defaults to the
+    /// platform’s default calling convention; use [`Cif::new_with_abi`] to create a Cif for a given
+    /// ABI.
     ///
-    /// Takes ownership of the argument and result [`Type`]s, because the resulting [`Cif`] retains
-    /// references to them. Defaults to the platform’s default calling convention; this can be
-    /// adjusted using [`Cif::set_abi`].
+    /// # Panics
+    ///
+    /// See [`Cif::new_with_abi`] for possible panic scenarios.
+    pub fn new(args: &[Type], result: Type) -> Self {
+        Self::new_with_abi(args, result, ffi_abi_FFI_DEFAULT_ABI)
+    }
+
+    /// Creates a new [`Cif`] for the given argument and result types, and ABI.
     ///
     /// # Panics
     ///
     /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
     /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
-    pub fn new<I>(args: I, result: Type) -> Self
-    where
-        I: IntoIterator<Item = Type>,
-        I::IntoIter: ExactSizeIterator<Item = Type>,
-    {
-        let args = args.into_iter();
-        let nargs = args.len();
-        let args = types::TypeArray::new(args);
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "Removes one character from common usage of this function, I do not see a compelling reason to accept a &Type at the moment."
+    )]
+    pub fn new_with_abi(args: &[Type], result: Type, abi: FfiAbi) -> Self {
+        let n_args = args.len();
+        let mut args: Box<[types::RawType]> = args.iter().map(Type::as_raw).collect();
+        let result = result.as_raw();
         let mut cif = low::ffi_cif::default();
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
@@ -120,16 +108,20 @@ impl Cif {
         unsafe {
             low::prep_cif(
                 &mut cif,
-                ffi_abi_FFI_DEFAULT_ABI,
-                nargs.try_into().unwrap(),
-                result.as_raw_ptr(),
-                args.as_raw_ptr(),
+                abi,
+                n_args.try_into().unwrap(),
+                result.0,
+                args.as_mut_ptr().cast(),
             )
         }
         .expect("low::prep_cif");
 
         // Note that cif retains references to args and result, which is why we hold onto them here.
-        Cif { cif, args, result }
+        Cif {
+            cif,
+            _args: args,
+            _result: result,
+        }
     }
 
     /// Calls a function with the given arguments.
@@ -163,19 +155,6 @@ impl Cif {
             )
         }
     }
-
-    /// Sets the CIF to use the given calling convention.
-    pub fn set_abi(&mut self, abi: FfiAbi) {
-        self.cif.abi = abi;
-    }
-
-    /// Gets a raw pointer to the underlying [`low::ffi_cif`].
-    ///
-    /// This can be used for passing a `middle::Cif` to functions from the [`low`](crate::low) and
-    /// [`raw`](crate::raw) modules.
-    pub fn as_raw_ptr(&self) -> *mut low::ffi_cif {
-        (&raw const self.cif).cast_mut()
-    }
 }
 
 /// Represents a closure callable from C.
@@ -207,13 +186,14 @@ impl Cif {
 ///     userdata: &F,
 /// ) {
 ///     let args = args as *const &u64;
-///     let arg1 = **args.offset(0);
-///     let arg2 = **args.offset(1);
-///
-///     *result = userdata(arg1, arg2);
+///     unsafe {
+///         let arg1 = **args.offset(0);
+///         let arg2 = **args.offset(1);
+///         *result = userdata(arg1, arg2);
+///     }
 /// }
 ///
-/// let cif = Cif::new(vec![Type::u64(), Type::u64()].into_iter(), Type::u64());
+/// let cif = Cif::new(&[Type::U64, Type::U64], Type::U64);
 /// let lambda = |x: u64, y: u64| x + y;
 /// let closure = Closure::new(cif, lambda_callback, &lambda);
 ///
@@ -259,7 +239,7 @@ impl<'a> Closure<'a> {
     ///
     /// The new closure.
     pub fn new<U, R>(cif: Cif, callback: Callback<U, R>, userdata: &'a U) -> Self {
-        let cif = Box::new(cif);
+        let mut cif = Box::new(cif);
         let (alloc, code) = low::closure_alloc();
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
@@ -267,7 +247,7 @@ impl<'a> Closure<'a> {
         unsafe {
             low::prep_closure(
                 alloc,
-                cif.as_raw_ptr(),
+                &raw mut cif.cif,
                 callback,
                 ptr::from_ref(userdata),
                 code,
@@ -301,7 +281,7 @@ impl<'a> Closure<'a> {
     ///
     /// The new closure.
     pub fn new_mut<U, R>(cif: Cif, callback: CallbackMut<U, R>, userdata: &'a mut U) -> Self {
-        let cif = Box::new(cif);
+        let mut cif = Box::new(cif);
         let (alloc, code) = low::closure_alloc();
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
@@ -309,7 +289,7 @@ impl<'a> Closure<'a> {
         unsafe {
             low::prep_closure_mut(
                 alloc,
-                cif.as_raw_ptr(),
+                &raw mut cif.cif,
                 callback,
                 ptr::from_mut(userdata),
                 code,
@@ -392,7 +372,7 @@ impl ClosureOnce {
     ///
     /// The new closure.
     pub fn new<U: Any, R>(cif: Cif, callback: CallbackOnce<U, R>, userdata: U) -> Self {
-        let cif = Box::new(cif);
+        let mut cif = Box::new(cif);
         let userdata = Box::new(Some(userdata)) as Box<dyn Any>;
         let (alloc, code) = low::closure_alloc();
 
@@ -405,7 +385,7 @@ impl ClosureOnce {
             unsafe {
                 low::prep_closure_mut(
                     alloc,
-                    cif.as_raw_ptr(),
+                    &raw mut cif.cif,
                     callback,
                     ptr::from_ref(borrow).cast_mut(),
                     code,
@@ -446,13 +426,13 @@ impl ClosureOnce {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     use super::*;
 
     #[test]
     fn call() {
-        let cif = Cif::new(vec![Type::i64(), Type::i64()], Type::i64());
+        let cif = Cif::new(&[Type::I64, Type::I64], Type::I64);
         let f = |m: i64, n: i64| -> i64 {
             // SAFETY: the cif is properly defined and `add_it`` does not perform any unsafe
             // actions.
@@ -470,7 +450,7 @@ mod test {
 
     #[test]
     fn closure() {
-        let cif = Cif::new(vec![Type::u64()], Type::u64());
+        let cif = Cif::new(&[Type::U64], Type::U64);
         let env: u64 = 5;
         let closure = Closure::new(cif, callback, &env);
 
@@ -496,7 +476,7 @@ mod test {
 
     #[test]
     fn rust_lambda() {
-        let cif = Cif::new(vec![Type::u64(), Type::u64()], Type::u64());
+        let cif = Cif::new(&[Type::U64, Type::U64], Type::U64);
         let env = |x: u64, y: u64| x + y;
         let closure = Closure::new(cif, callback2, &env);
 
@@ -529,15 +509,15 @@ mod test {
     #[test]
     fn clone_cif() {
         let cif = Cif::new(
-            vec![
-                Type::structure(vec![
-                    Type::structure(vec![Type::u64(), Type::u8(), Type::f64()]),
-                    Type::i8(),
-                    Type::i64(),
+            &[
+                Type::structure(&[
+                    Type::structure(&[Type::U64, Type::U8, Type::F64]),
+                    Type::I8,
+                    Type::I64,
                 ]),
-                Type::u64(),
+                Type::U64,
             ],
-            Type::u64(),
+            Type::U64,
         );
         let clone_cif = cif.clone();
 

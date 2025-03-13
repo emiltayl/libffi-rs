@@ -147,7 +147,7 @@ pub use raw::{
 /// For example, [`raw::ffi_type_void`] becomes [`types::void`].
 pub mod types {
     #[cfg(feature = "complex")]
-    #[cfg(not(any(target_arch = "arm", target_env = "msvc")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     pub use crate::raw::ffi_type_complex_longdouble as complex_longdouble;
     #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
     pub use crate::raw::ffi_type_longdouble as longdouble;

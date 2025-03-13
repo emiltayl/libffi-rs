@@ -4,18 +4,14 @@ use super::types::Type;
 
 /// Provides a builder-style API for constructing CIFs and closures.
 ///
-/// To use a builder, first construct it using [`Builder::new`]. The
-/// default calling convention is
-/// [`ffi_abi_FFI_DEFAULT_ABI`](crate::low::ffi_abi_FFI_DEFAULT_ABI),
-/// and the default function type is `extern "C" fn()` (or in C,
-/// `void(*)()`). Add argument types to the function type with the
-/// [`Builder::arg`] and [`args`](Builder::args) methods. Set the result type
-/// with [`Builder::res`]. Change the calling convention, if necessary,
-/// with [`Builder::abi`].
+/// To use a builder, first construct it using [`Builder::new`]. The default calling convention is
+/// [`ffi_abi_FFI_DEFAULT_ABI`](crate::low::ffi_abi_FFI_DEFAULT_ABI), and the default function type
+/// is `extern "C" fn()` (or in C, `void(*)()`). Add argument types to the function type with the
+/// [`Builder::arg`] and [`args`](Builder::args) methods. Set the result type with [`Builder::res`].
+/// Change the calling convention, if necessary, with [`Builder::abi`].
 ///
-/// Once the builder is configured, construct a `Cif` with
-/// [`Builder::into_cif`] or a closure with [`Builder::into_closure`],
-/// [`into_closure_mut`](Builder::into_closure_mut), or
+/// Once the builder is configured, construct a `Cif` with [`Builder::into_cif`] or a closure with
+/// [`Builder::into_closure`], [`into_closure_mut`](Builder::into_closure_mut), or
 /// [`into_closure_once`](Builder::into_closure_once).
 ///
 /// # Examples
@@ -71,7 +67,7 @@ impl Builder {
     pub fn new() -> Self {
         Builder {
             args: vec![],
-            res: Type::void(),
+            res: Type::Void,
             abi: super::ffi_abi_FFI_DEFAULT_ABI,
         }
     }
@@ -85,11 +81,8 @@ impl Builder {
 
     /// Adds several types to the argument type list.
     #[must_use]
-    pub fn args<I>(mut self, types: I) -> Self
-    where
-        I: IntoIterator<Item = Type>,
-    {
-        self.args.extend(types);
+    pub fn args(mut self, types: &[Type]) -> Self {
+        self.args.extend_from_slice(types);
         self
     }
 
@@ -109,9 +102,7 @@ impl Builder {
 
     /// Builds a CIF.
     pub fn into_cif(self) -> super::Cif {
-        let mut result = super::Cif::new(self.args, self.res);
-        result.set_abi(self.abi);
-        result
+        super::Cif::new_with_abi(&self.args, self.res, self.abi)
     }
 
     /// Builds an immutable closure.

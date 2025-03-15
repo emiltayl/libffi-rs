@@ -199,9 +199,11 @@ pub mod types {
 ///     ]
 /// };
 ///
-/// let mut my_struct: ffi_type = Default::default();
-/// my_struct.type_ = type_tag::STRUCT;
-/// my_struct.elements = elements.as_mut_ptr();
+/// let my_struct: ffi_type = ffi_type {
+///     type_: type_tag::STRUCT,
+///     elements: elements.as_mut_ptr(),
+///     ..Default::default()
+/// };
 /// ```
 pub mod type_tag {
     use core::ffi::c_ushort;
@@ -549,8 +551,10 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     args: *const *const c_void,
 ///     userdata: &u64,
 /// ) {
-///     let args: *const &u64 = mem::transmute(args);
-///     *result = **args + *userdata;
+///     unsafe {
+///         let args: *const &u64 = mem::transmute(args);
+///         *result = **args + *userdata;
+///     }
 /// }
 ///
 /// fn twice(f: extern "C" fn(u64) -> u64, x: u64) -> u64 {
@@ -654,9 +658,11 @@ pub unsafe fn prep_closure<U, R>(
 ///     args: *const *const c_void,
 ///     userdata: &mut u64,
 /// ) {
-///     let args: *const &u64 = mem::transmute(args);
-///     *result = *userdata;
-///     *userdata += **args;
+///     unsafe {
+///         let args: *const &u64 = mem::transmute(args);
+///         *result = *userdata;
+///         *userdata += **args;
+///     }
 /// }
 ///
 /// fn twice(f: extern "C" fn(u64) -> u64, x: u64) -> u64 {

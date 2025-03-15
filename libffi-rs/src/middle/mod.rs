@@ -59,13 +59,13 @@ pub fn arg<T>(r: &T) -> Arg {
 ///
 /// ```
 /// extern "C" fn add(x: f64, y: &f64) -> f64 {
-///     return x + y;
+///     x + y
 /// }
 ///
 /// use libffi::middle::*;
 ///
 /// let args = [Type::F64, Type::Pointer];
-/// let cif = Cif::new(&args, Type::F64);
+/// let cif = Cif::new(&args, Some(Type::F64));
 ///
 /// let n = unsafe { cif.call(CodePtr(add as *mut _), &[arg(&5f64), arg(&&6f64)]) };
 /// assert_eq!(11f64, n);
@@ -78,31 +78,33 @@ pub struct Cif {
 }
 
 impl Cif {
-    /// Creates a new [CIF](Cif) for the given argument and result types. [`Cif`] defaults to the
-    /// platform’s default calling convention; use [`Cif::new_with_abi`] to create a Cif for a given
-    /// ABI.
+    /// Creates a new [CIF](Cif) for the given argument and result types. A `void` return type is
+    /// defined in the `Cif` if `result` is `None`.
+    ///
+    /// [`Cif`] defaults to the platform’s default calling convention; use [`Cif::new_with_abi`] to
+    /// create a Cif for a given ABI.
     ///
     /// # Panics
     ///
     /// See [`Cif::new_with_abi`] for possible panic scenarios.
-    pub fn new(args: &[Type], result: Type) -> Self {
+    pub fn new(args: &[Type], result: Option<Type>) -> Self {
         Self::new_with_abi(args, result, ffi_abi_FFI_DEFAULT_ABI)
     }
 
-    /// Creates a new [`Cif`] for the given argument and result types, and ABI.
+    /// Creates a new [`Cif`] for the given argument and result types, and ABI. A `void` return type
+    /// is defined in the `Cif` if `result` is `None`.
     ///
     /// # Panics
     ///
     /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
     /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "Removes one character from common usage of this function, I do not see a compelling reason to accept a &Type at the moment."
-    )]
-    pub fn new_with_abi(args: &[Type], result: Type, abi: FfiAbi) -> Self {
+    pub fn new_with_abi(args: &[Type], result: Option<Type>, abi: FfiAbi) -> Self {
         let n_args = args.len();
         let mut args: Box<[types::RawType]> = args.iter().map(Type::as_raw).collect();
-        let result = result.as_raw();
+        let result = match result {
+            Some(result) => result.as_raw(),
+            None => types::RawType(&raw mut low::types::void),
+        };
         let mut cif = low::ffi_cif::default();
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
@@ -195,7 +197,7 @@ impl Cif {
 ///     }
 /// }
 ///
-/// let cif = Cif::new(&[Type::U64, Type::U64], Type::U64);
+/// let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64));
 /// let lambda = |x: u64, y: u64| x + y;
 /// let closure = Closure::new(cif, lambda_callback, &lambda);
 ///
@@ -434,7 +436,7 @@ mod test {
 
     #[test]
     fn call() {
-        let cif = Cif::new(&[Type::I64, Type::I64], Type::I64);
+        let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64));
         let f = |m: i64, n: i64| -> i64 {
             // SAFETY: the cif is properly defined and `add_it`` does not perform any unsafe
             // actions.
@@ -452,7 +454,7 @@ mod test {
 
     #[test]
     fn closure() {
-        let cif = Cif::new(&[Type::U64], Type::U64);
+        let cif = Cif::new(&[Type::U64], Some(Type::U64));
         let env: u64 = 5;
         let closure = Closure::new(cif, callback, &env);
 
@@ -478,7 +480,7 @@ mod test {
 
     #[test]
     fn rust_lambda() {
-        let cif = Cif::new(&[Type::U64, Type::U64], Type::U64);
+        let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64));
         let env = |x: u64, y: u64| x + y;
         let closure = Closure::new(cif, callback2, &env);
 
@@ -519,7 +521,7 @@ mod test {
                 ]),
                 Type::U64,
             ],
-            Type::U64,
+            Some(Type::U64),
         );
         let clone_cif = cif.clone();
 

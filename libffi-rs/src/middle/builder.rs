@@ -32,19 +32,21 @@ use super::types::Type;
 ///     args: *const *const c_void,
 ///     userdata: &F,
 /// ) {
-///     let args: *const &u64 = mem::transmute(args);
-///     let arg1 = **args.offset(0);
-///     let arg2 = **args.offset(1);
+///     unsafe {
+///         let args: *const &u64 = mem::transmute(args);
+///         let arg1 = **args.offset(0);
+///         let arg2 = **args.offset(1);
 ///
-///     *result = userdata(arg1, arg2);
+///         *result = userdata(arg1, arg2);
+///     }
 /// }
 ///
 /// let lambda = |x: u64, y: u64| x + y;
 ///
 /// let closure = Builder::new()
-///     .arg(Type::u64())
-///     .arg(Type::u64())
-///     .res(Type::u64())
+///     .arg(Type::U64)
+///     .arg(Type::U64)
+///     .res(Some(Type::U64))
 ///     .into_closure(lambda_callback, &lambda);
 ///
 /// unsafe {
@@ -57,7 +59,7 @@ use super::types::Type;
 #[derive(Clone, Debug)]
 pub struct Builder {
     args: Vec<Type>,
-    res: Type,
+    res: Option<Type>,
     abi: super::FfiAbi,
 }
 
@@ -72,7 +74,7 @@ impl Builder {
     pub fn new() -> Self {
         Builder {
             args: vec![],
-            res: Type::Void,
+            res: None,
             abi: super::ffi_abi_FFI_DEFAULT_ABI,
         }
     }
@@ -93,7 +95,7 @@ impl Builder {
 
     /// Sets the result type.
     #[must_use]
-    pub fn res(mut self, type_: Type) -> Self {
+    pub fn res(mut self, type_: Option<Type>) -> Self {
         self.res = type_;
         self
     }

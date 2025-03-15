@@ -13,9 +13,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 #[cfg(miri)]
-use miri::{
-    double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64, void,
-};
+use miri::{double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64};
 
 #[cfg(all(feature = "complex", not(target_env = "msvc")))]
 use crate::low::types::complex_double;
@@ -30,15 +28,13 @@ use crate::low::types::complex_longdouble;
 use crate::low::types::longdouble;
 #[cfg(not(miri))]
 use crate::low::types::{
-    double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64, void,
+    double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64,
 };
 use crate::low::{ffi_type, type_tag};
 
 /// This represents a C type that libffi can pass to, and return from functions.
 #[derive(Clone, Debug)]
 pub enum Type {
-    /// Represent C's `void` type, may only be used for the return type of a cif.
-    Void,
     /// Represents a `i8`
     I8,
     /// Represents a `u8`
@@ -113,15 +109,6 @@ const fn unsigned_data_to_scalar_type<T: Sized>() -> Type {
 }
 
 impl Type {
-    /// Returns the representation of the C `void` type.
-    ///
-    /// This is used only for the return type of a [CIF](super::Cif), not for an argument or struct
-    /// member.
-    #[deprecated = "Refer to `Type::Void` directly. This function will be removed in a future version."]
-    pub const fn void() -> Self {
-        Self::Void
-    }
-
     /// Returns the signed 8-bit numeric type.
     #[deprecated = "Refer to `Type::I8` directly. This function will be removed in a future version."]
     pub const fn i8() -> Self {
@@ -295,7 +282,6 @@ impl Type {
     /// directly to libffi.
     pub(crate) fn as_raw(&self) -> RawType {
         match self {
-            Type::Void => RawType(&raw mut void),
             Type::I8 => RawType(&raw mut sint8),
             Type::U8 => RawType(&raw mut uint8),
             Type::I16 => RawType(&raw mut sint16),
@@ -650,18 +636,11 @@ mod miri {
         raw::{
             FFI_TYPE_DOUBLE, FFI_TYPE_FLOAT, FFI_TYPE_POINTER, FFI_TYPE_SINT8, FFI_TYPE_SINT16,
             FFI_TYPE_SINT32, FFI_TYPE_SINT64, FFI_TYPE_UINT8, FFI_TYPE_UINT16, FFI_TYPE_UINT32,
-            FFI_TYPE_UINT64, FFI_TYPE_VOID,
+            FFI_TYPE_UINT64,
         },
     };
 
     // Redefining static muts so this module can be tested with miri
-    pub(super) static mut void: ffi_type = ffi_type {
-        size: 0,
-        alignment: 0,
-        type_: FFI_TYPE_VOID as u16,
-        elements: core::ptr::null_mut(),
-    };
-
     pub(super) static mut sint8: ffi_type = ffi_type {
         size: 0,
         alignment: 0,

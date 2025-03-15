@@ -2,6 +2,11 @@
 members = [
     "libffi-rs",
     "libffi-sys-rs",
+    "examples/*",
+]
+
+exclude = [
+    "examples/no_std_run",
 ]
 
 resolver = "3"

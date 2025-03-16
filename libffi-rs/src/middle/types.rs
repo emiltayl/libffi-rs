@@ -80,11 +80,12 @@ pub enum Type {
     ///
     /// This item is enabled by `#[cfg(feature = "complex")]`. It is not available when building for
     /// msvc or for ARM.
-    #[cfg(all(feature = "complex", not(target_env = "msvc")))]
-    #[cfg(not(any(target_arch = "arm", target_env = "msvc")))]
+    #[cfg(all(
+        feature = "complex",
+        not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+    ))]
     ComplexLongDouble,
     /// Represents a `repr(C)` structure.
-    //TODO https://www.chiark.greenend.org.uk/doc/libffi-dev/html/Structures.html
     Structure(Box<[Type]>),
 }
 
@@ -267,7 +268,10 @@ impl Type {
     ///
     /// This item is enabled by `#[cfg(feature = "complex")]`. It is not available when building for
     /// msvc or the arm arch.
-    #[cfg(all(feature = "complex", not(target_env = "msvc")))]
+    #[cfg(all(
+        feature = "complex",
+        not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+    ))]
     #[deprecated = "Refer to `Type::ComplexLongDouble` directly. This function will be removed in a future version."]
     pub const fn complex_longdouble() -> Self {
         Self::ComplexLongDouble

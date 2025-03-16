@@ -60,14 +60,29 @@ jobs:
           toolchain: nightly-x86_64-pc-windows-gnu
           targets: x86_64-pc-windows-gnu
           components: clippy, rustfmt, miri
-      - name: Add additional Rust toolchains and tools for GNU
+      - name: Add additional Rust toolchains
         run: |
-          rustup toolchain install --target x86_64-pc-windows-gnu 1.85.0
-          rustup toolchain install --target x86_64-pc-windows-gnu stable
-          rustup toolchain install --target x86_64-pc-windows-gnu --component clippy --component rustfmt --component miri --profile minimal --no-self-update nightly
-          rustup toolchain uninstall nightly-x86_64-pc-windows-msvc
+          rustup toolchain install --target x86_64-pc-windows-gnu 1.85.0-x86_64-pc-windows-gnu
+          rustup toolchain install --target x86_64-pc-windows-gnu stable-x86_64-pc-windows-gnu
       - name: CI
-        run: .\scripts\ci-checks.bat
+        # I was unable to get *-gnu to play nice with scripts/ci-checks.bat, so this action will
+        # only execute part of the script instead.
+        shell: msys2 {0}
+        run: |
+          cargo +nightly-x86_64-pc-windows-gnu fmt --all --check --verbose
+          cargo +nightly-x86_64-pc-windows-gnu fmt --manifest-path=examples/no_std_run/Cargo.toml --all --check --verbose
+          cargo +nightly-x86_64-pc-windows-gnu clippy --all --all-targets --all-features --verbose -- -D warnings
+          cargo +nightly-x86_64-pc-windows-gnu clippy --manifest-path=examples/no_std_run/Cargo.toml --all --all-features --verbose -- -D warnings
+          cargo +1.85.0-x86_64-pc-windows-gnu test --workspace --all-targets --verbose
+          cargo +stable-x86_64-pc-windows-gnu test --workspace --all-targets --verbose
+          cargo +nightly-x86_64-pc-windows-gnu test --workspace --all-targets --verbose
+          cargo +nightly-x86_64-pc-windows-gnu miri test --workspace --lib --verbose
+          cargo +1.85.0-x86_64-pc-windows-gnu run --example call_c_fn --verbose
+          cargo +stable-x86_64-pc-windows-gnu run --example call_c_fn --verbose
+          cargo +nightly-x86_64-pc-windows-gnu run --example call_c_fn --verbose
+          cargo +1.85.0-x86_64-pc-windows-gnu run --manifest-path=examples/no_std_run/Cargo.toml --verbose
+          cargo +stable-x86_64-pc-windows-gnu run --manifest-path=examples/no_std_run/Cargo.toml --verbose
+          cargo +nightly-x86_64-pc-windows-gnu run --manifest-path=examples/no_std_run/Cargo.toml --verbose
 
   windows-latest-msvc:
     strategy:

@@ -12,8 +12,16 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::{any::Any, ffi::c_void, marker::PhantomData, ptr};
 
-use crate::low;
+#[cfg(miri)]
+use miri::{call, prep_cif};
+
 pub use crate::low::{Callback, CallbackMut, CodePtr, ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI};
+#[cfg(not(miri))]
+use crate::low::{call, prep_cif};
+use crate::low::{
+    closure_alloc, closure_free, ffi_cif, ffi_closure, prep_closure, prep_closure_mut,
+    types as low_types,
+};
 
 mod types;
 pub use types::Type;
@@ -70,11 +78,10 @@ pub fn arg<T>(r: &T) -> Arg {
 /// let n = unsafe { cif.call(CodePtr(add as *mut _), &[arg(&5f64), arg(&&6f64)]) };
 /// assert_eq!(11f64, n);
 /// ```
-#[derive(Clone, Debug)]
 pub struct Cif {
-    cif: low::ffi_cif,
-    _args: Box<[types::RawType]>,
-    _result: types::RawType,
+    cif: *mut ffi_cif,
+    args: *mut [types::RawType],
+    result: types::RawType,
 }
 
 impl Cif {
@@ -100,32 +107,32 @@ impl Cif {
     /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
     pub fn new_with_abi(args: &[Type], result: Option<Type>, abi: FfiAbi) -> Self {
         let n_args = args.len();
-        let mut args: Box<[types::RawType]> = args.iter().map(Type::as_raw).collect();
+
+        let args: Box<[types::RawType]> = args.iter().map(Type::as_raw).collect();
+        let args = Box::into_raw(args);
+
         let result = match result {
             Some(result) => result.as_raw(),
-            None => types::RawType(&raw mut low::types::void),
+            None => types::RawType(&raw mut low_types::void),
         };
-        let mut cif = low::ffi_cif::default();
+
+        let cif = Box::into_raw(Box::new(ffi_cif::default()));
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_cif` call.
         unsafe {
-            low::prep_cif(
-                &mut cif,
+            prep_cif(
+                cif,
                 abi,
                 n_args.try_into().unwrap(),
                 result.0,
-                args.as_mut_ptr().cast(),
+                (*args).as_mut_ptr().cast(),
             )
         }
         .expect("low::prep_cif");
 
         // Note that cif retains references to args and result, which is why we hold onto them here.
-        Cif {
-            cif,
-            _args: args,
-            _result: result,
-        }
+        Cif { cif, args, result }
     }
 
     /// Calls a function with the given arguments.
@@ -143,20 +150,69 @@ impl Cif {
     /// This function will panic if `args` does not contain exactly as many arguments as defined in
     /// [`Cif::new`].
     pub unsafe fn call<R>(&self, fun: CodePtr, args: &[Arg]) -> R {
-        assert_eq!(
-            self.cif.nargs as usize,
-            args.len(),
-            "Cif::call: passed wrong number of arguments"
-        );
+        // SAFETY: `self.cif` is a pointer to `low::ffi_cif` owned and managed by `self`.
+        unsafe {
+            assert_eq!(
+                (*self.cif).nargs as usize,
+                args.len(),
+                "Cif::call: passed wrong number of arguments"
+            );
+        }
 
         // SAFETY: This is inherently unsafe and it is up to the caller of this function to uphold
         // all required safety guarantees.
+        unsafe { call::<R>(self.cif, fun, args.as_ptr() as *mut *mut c_void) }
+    }
+}
+
+impl Clone for Cif {
+    fn clone(&self) -> Self {
+        // SAFETY: `self.cif` is a pointer to a `low::ffi_cif` owned and managed by `self`.
+        let mut cif = unsafe { Box::new(*self.cif) };
+        // SAFETY: `self.args` is a pointer to `[RawType]` owned and managed by `self`.
+        let args_clone = unsafe {
+            (*self.args)
+                .iter()
+                .cloned()
+                .collect::<Box<[types::RawType]>>()
+        };
+        let args_clone = Box::into_raw(args_clone.clone());
+
+        let result = self.result.clone();
+
+        // SAFETY: `args_clone` is a pointer to the new `[RawType]` for the cloned `Cif`.
+        cif.arg_types = unsafe { (*args_clone).as_mut_ptr().cast() };
+        cif.rtype = result.0;
+
+        Self {
+            cif: Box::into_raw(cif),
+            args: args_clone,
+            result,
+        }
+    }
+}
+
+impl core::fmt::Debug for Cif {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // SAFETY: `self.args` is a pointer to `[RawType]` owned and managed by `self`.
+        let args_ref = unsafe { &*self.args };
+
+        f.debug_struct("Cif")
+            // SAFETY: `self.cif` is a pointer to a `low::ffi_cif` owned and managed by `self`.
+            .field("cif", unsafe { &*self.cif })
+            .field("args", &args_ref)
+            .field("result", &self.result)
+            .finish()
+    }
+}
+
+impl Drop for Cif {
+    fn drop(&mut self) {
+        // SAFETY: `self.cif` and `self.args` are a pointers created by `Box::into_raw` owned and
+        // managed by `self`.
         unsafe {
-            low::call::<R>(
-                (&raw const self.cif).cast_mut(),
-                fun,
-                args.as_ptr() as *mut *mut c_void,
-            )
+            drop(Box::from_raw(self.cif));
+            drop(Box::from_raw(self.args));
         }
     }
 }
@@ -208,8 +264,8 @@ impl Cif {
 /// ```
 #[derive(Debug)]
 pub struct Closure<'a> {
-    _cif: Box<Cif>,
-    alloc: *mut low::ffi_closure,
+    _cif: Cif,
+    alloc: *mut ffi_closure,
     code: CodePtr,
     _marker: PhantomData<&'a ()>,
 }
@@ -219,7 +275,7 @@ impl Drop for Closure<'_> {
         // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
         // freed by `low::closure_free` and only that function.
         unsafe {
-            low::closure_free(self.alloc);
+            closure_free(self.alloc);
         }
     }
 }
@@ -243,20 +299,12 @@ impl<'a> Closure<'a> {
     ///
     /// The new closure.
     pub fn new<U, R>(cif: Cif, callback: Callback<U, R>, userdata: &'a U) -> Self {
-        let mut cif = Box::new(cif);
-        let (alloc, code) = low::closure_alloc();
+        let (alloc, code) = closure_alloc();
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
         unsafe {
-            low::prep_closure(
-                alloc,
-                &raw mut cif.cif,
-                callback,
-                ptr::from_ref(userdata),
-                code,
-            )
-            .unwrap();
+            prep_closure(alloc, cif.cif, callback, ptr::from_ref(userdata), code).unwrap();
         }
 
         Closure {
@@ -285,20 +333,12 @@ impl<'a> Closure<'a> {
     ///
     /// The new closure.
     pub fn new_mut<U, R>(cif: Cif, callback: CallbackMut<U, R>, userdata: &'a mut U) -> Self {
-        let mut cif = Box::new(cif);
-        let (alloc, code) = low::closure_alloc();
+        let (alloc, code) = closure_alloc();
 
         // Safety: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
         unsafe {
-            low::prep_closure_mut(
-                alloc,
-                &raw mut cif.cif,
-                callback,
-                ptr::from_mut(userdata),
-                code,
-            )
-            .unwrap();
+            prep_closure_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code).unwrap();
         }
 
         Closure {
@@ -341,9 +381,9 @@ pub type CallbackOnce<U, R> = CallbackMut<Option<U>, R>;
 /// will be gone if called again.
 #[derive(Debug)]
 pub struct ClosureOnce {
-    alloc: *mut low::ffi_closure,
+    alloc: *mut ffi_closure,
     code: CodePtr,
-    _cif: Box<Cif>,
+    _cif: Cif,
     _userdata: Box<dyn Any>,
 }
 
@@ -352,7 +392,7 @@ impl Drop for ClosureOnce {
         // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
         // freed by `low::closure_free` and only that function.
         unsafe {
-            low::closure_free(self.alloc);
+            closure_free(self.alloc);
         }
     }
 }
@@ -376,9 +416,8 @@ impl ClosureOnce {
     ///
     /// The new closure.
     pub fn new<U: Any, R>(cif: Cif, callback: CallbackOnce<U, R>, userdata: U) -> Self {
-        let mut cif = Box::new(cif);
         let userdata = Box::new(Some(userdata)) as Box<dyn Any>;
-        let (alloc, code) = low::closure_alloc();
+        let (alloc, code) = closure_alloc();
 
         assert!(!alloc.is_null(), "closure_alloc: returned null");
 
@@ -387,9 +426,9 @@ impl ClosureOnce {
             // Safety: `Type` should ensure that no input to this function can cause safety issues
             // in the `low::prep_closure_mut` call.
             unsafe {
-                low::prep_closure_mut(
+                prep_closure_mut(
                     alloc,
-                    &raw mut cif.cif,
+                    cif.cif,
                     callback,
                     ptr::from_ref(borrow).cast_mut(),
                     code,
@@ -466,7 +505,7 @@ mod test {
     }
 
     unsafe extern "C" fn callback(
-        _cif: &low::ffi_cif,
+        _cif: &ffi_cif,
         result: &mut u64,
         args: *const *const c_void,
         userdata: &u64,
@@ -491,7 +530,7 @@ mod test {
     }
 
     unsafe extern "C" fn callback2<F: Fn(u64, u64) -> u64>(
-        _cif: &low::ffi_cif,
+        _cif: &ffi_cif,
         result: &mut u64,
         args: *const *const c_void,
         userdata: &F,
@@ -528,7 +567,7 @@ mod test {
         // SAFETY: `std::slice::from_raw_parts` is used to create slices on data created in Rust
         // that should be non-null and properly aligned.
         unsafe {
-            let args = std::slice::from_raw_parts(cif.cif.arg_types, cif.cif.nargs as usize);
+            let args = std::slice::from_raw_parts((*cif.cif).arg_types, (*cif.cif).nargs as usize);
             let struct_arg = args
                 .first()
                 .expect("CIF arguments slice was empty")
@@ -544,8 +583,10 @@ mod test {
                 .expect("CIF struct argument's first element was null")
                 .size;
 
-            let clone_args =
-                std::slice::from_raw_parts(clone_cif.cif.arg_types, clone_cif.cif.nargs as usize);
+            let clone_args = std::slice::from_raw_parts(
+                (*clone_cif.cif).arg_types,
+                (*clone_cif.cif).nargs as usize,
+            );
             let clone_struct_arg = clone_args
                 .first()
                 .expect("CIF arguments slice was empty")
@@ -563,6 +604,215 @@ mod test {
 
             assert_eq!(struct_size, clone_struct_size);
             assert_eq!(substruct_size, clone_substruct_size);
+        }
+    }
+}
+
+/// Tests to ensure that memory management for `middle` structs is correct.
+#[cfg(test)]
+mod miritest {
+    use super::*;
+
+    extern "C" fn dummy_function(
+        _: i8,
+        _: u16,
+        _: i32,
+        _: u64,
+        _: *const c_void,
+        _: f32,
+        _: f64,
+        _: u8,
+    ) -> u32 {
+        0
+    }
+
+    #[test]
+    fn create_cifs_clone_then_call() {
+        let cif = Cif::new(
+            &[
+                Type::I8,
+                Type::U16,
+                Type::I32,
+                Type::U64,
+                Type::Pointer,
+                Type::F32,
+                Type::F64,
+                Type::structure(&[Type::U8]),
+            ],
+            Some(Type::U32),
+        );
+
+        let cif_1 = cif.clone();
+        drop(cif);
+        let cif = cif_1.clone();
+        let cif_2 = cif.clone();
+        let cif_3 = cif_2.clone();
+        drop(cif);
+
+        let arguments = [
+            arg(&1i8),
+            arg(&2u16),
+            arg(&3i32),
+            arg(&4u64),
+            arg(&ptr::null::<c_void>()),
+            arg(&6f32),
+            arg(&7f64),
+            arg(&8u8),
+        ];
+
+        // SAFETY: [`Cif::call`] is called with the correct number of arguments with (mostly) the
+        // correct type. A struct with no members cannot be read anyways?
+        unsafe {
+            cif_1.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
+            cif_2.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
+            drop(cif_2);
+            cif_3.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
+        }
+    }
+}
+
+#[cfg(miri)]
+mod miri {
+    use core::ffi::c_void;
+
+    use crate::{
+        low::{CodePtr, ffi_abi, ffi_cif, ffi_type},
+        raw::{
+            FFI_TYPE_DOUBLE, FFI_TYPE_FLOAT, FFI_TYPE_POINTER, FFI_TYPE_SINT8, FFI_TYPE_SINT16,
+            FFI_TYPE_SINT32, FFI_TYPE_SINT64, FFI_TYPE_STRUCT, FFI_TYPE_UINT8, FFI_TYPE_UINT16,
+            FFI_TYPE_UINT32, FFI_TYPE_UINT64,
+        },
+    };
+
+    /// Helper function to write to values in ffi_type to make sure that possible memory writes are
+    /// checked.
+    ///
+    /// # Safety
+    ///
+    /// Writes to `t`, make sure that it is a well-formed [`ffi_type`].
+    unsafe fn write_to_ffi_type(t: *mut ffi_type) {
+        // SAFETY: It is up to the caller of this function to ensure that `t` can be written to.
+        unsafe {
+            (*t).alignment += 1;
+            (*t).size += 1;
+
+            if !(*t).elements.is_null() {
+                let mut child = (*t).elements;
+                while !(*child).is_null() {
+                    write_to_ffi_type(*child);
+                    child = child.add(1);
+                }
+            }
+        }
+    }
+
+    /// Replaces [`low::prep_cif`] for tests with miri. Note that this function can not be used to
+    /// prepare an actual [`middle::Cif`] for use with libffi.
+    ///
+    /// This function will write to `cif`, `rtype`, and `atypes` as that is something libffi may do.
+    ///
+    /// # Safety
+    ///
+    /// This function will write to the pointers provided to this function. As long as they point to
+    /// valid memory, nothing unsafe should happen.
+    pub(super) unsafe fn prep_cif(
+        cif: *mut ffi_cif,
+        abi: ffi_abi,
+        nargs: u32,
+        rtype: *mut ffi_type,
+        atypes: *mut *mut ffi_type,
+    ) -> crate::low::Result<()> {
+        // SAFETY: It is assumed that `cif`, `rtype`, and `atypes` are valid pointers that can be
+        // written to and that `artypes` points to an array of `nargs` length.
+        unsafe {
+            write_to_ffi_type(rtype);
+
+            let nargs_usize = usize::try_from(nargs).unwrap();
+
+            for argument_index in 0..nargs_usize {
+                write_to_ffi_type(*(atypes.add(argument_index)));
+            }
+
+            (*cif).abi = abi;
+            (*cif).nargs = nargs;
+            (*cif).rtype = rtype;
+            (*cif).arg_types = atypes;
+        }
+
+        Ok(())
+    }
+
+    /// Helper function that dereferences a pointer to a type based on its `type_tag`. This function
+    /// does not currently support dereferencing structs.
+    ///
+    /// # Safety
+    ///
+    /// This function assumes that `ptr` points to valid memory of a type that corresponds to
+    /// `type_tag`.
+    unsafe fn deref_argument(type_tag: u16, ptr: *const c_void) {
+        // SAFETY: See this function's safety section.
+        unsafe {
+            match u32::from(type_tag) {
+                FFI_TYPE_SINT8 => {
+                    core::ptr::read_volatile::<i8>(ptr.cast());
+                }
+                FFI_TYPE_UINT8 => {
+                    core::ptr::read_volatile::<u8>(ptr.cast());
+                }
+                FFI_TYPE_SINT16 => {
+                    core::ptr::read_volatile::<i16>(ptr.cast());
+                }
+                FFI_TYPE_UINT16 => {
+                    core::ptr::read_volatile::<u16>(ptr.cast());
+                }
+                FFI_TYPE_SINT32 => {
+                    core::ptr::read_volatile::<i32>(ptr.cast());
+                }
+                FFI_TYPE_UINT32 => {
+                    core::ptr::read_volatile::<u32>(ptr.cast());
+                }
+                FFI_TYPE_SINT64 => {
+                    core::ptr::read_volatile::<i64>(ptr.cast());
+                }
+                FFI_TYPE_UINT64 => {
+                    core::ptr::read_volatile::<u64>(ptr.cast());
+                }
+                FFI_TYPE_POINTER => {
+                    core::ptr::read_volatile::<*const c_void>(ptr.cast());
+                }
+                FFI_TYPE_FLOAT => {
+                    core::ptr::read_volatile::<f32>(ptr.cast());
+                }
+                FFI_TYPE_DOUBLE => {
+                    core::ptr::read_volatile::<f64>(ptr.cast());
+                }
+                // No test for dereferencing custom structs as of now.
+                FFI_TYPE_STRUCT => assert!(!ptr.is_null()),
+                _ => panic!("Unknown type tag {type_tag} detected."),
+            }
+        }
+    }
+
+    /// Replaces [`low::call`] for tests with miri. Note that this function will not actually call
+    /// `fun`.
+    ///
+    /// # Safety
+    ///
+    /// This function uses `mem::zeroed` to return value. This may cause undefined behavior if all
+    /// zeroes is not a valid bit pattern for `R`.
+    ///
+    /// It also attempts to read all `args` values based on the types defined in `cif`.
+    pub(super) unsafe fn call<R>(cif: *mut ffi_cif, _fun: CodePtr, args: *mut *mut c_void) -> R {
+        // SAFETY: See this function's safety section.
+        unsafe {
+            for arg_index in 0..usize::try_from((*cif).nargs).unwrap() {
+                let type_tag = (**(*cif).arg_types.add(arg_index)).type_;
+                let arg_ptr = *args.add(arg_index);
+
+                deref_argument(type_tag, arg_ptr);
+            }
+
+            core::mem::zeroed::<R>()
         }
     }
 }

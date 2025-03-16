@@ -485,7 +485,7 @@ impl Drop for RawType {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use crate::raw::{
         FFI_TYPE_SINT8, FFI_TYPE_SINT16, FFI_TYPE_SINT32, FFI_TYPE_UINT8, FFI_TYPE_UINT16,

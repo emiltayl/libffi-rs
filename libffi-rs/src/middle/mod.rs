@@ -10,18 +10,18 @@
 extern crate alloc;
 #[cfg(not(test))]
 use alloc::boxed::Box;
-use core::{any::Any, ffi::c_void, marker::PhantomData, ptr};
+use core::{ffi::c_void, ptr};
 
 #[cfg(miri)]
 use miri::{call, prep_cif};
 
+use crate::low::ffi_cif;
 pub use crate::low::{Callback, CallbackMut, CodePtr, ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI};
 #[cfg(not(miri))]
 use crate::low::{call, prep_cif};
-use crate::low::{
-    closure_alloc, closure_free, ffi_cif, ffi_closure, prep_closure, prep_closure_mut,
-    types as low_types,
-};
+
+mod closure;
+pub use closure::{Closure, ClosureOwned};
 
 mod types;
 pub use types::Type;
@@ -113,7 +113,7 @@ impl Cif {
 
         let result = match result {
             Some(result) => result.as_raw(),
-            None => types::RawType(&raw mut low_types::void),
+            None => types::RawType::VOID,
         };
 
         let cif = Box::into_raw(Box::new(ffi_cif::default()));
@@ -217,258 +217,6 @@ impl Drop for Cif {
     }
 }
 
-/// Represents a closure callable from C.
-///
-/// A libffi closure captures a `void*` (“userdata”) and passes it to a callback when the code
-/// pointer (obtained via [`Closure::code_ptr`]) is invoked. Lifetype parameter `'a` ensures that
-/// the closure does not outlive the userdata.
-///
-/// Construct with [`Closure::new`] and [`Closure::new_mut`].
-///
-/// # Examples
-///
-/// In this example we turn a Rust lambda into a C function. We first define function
-/// `lambda_callback`, which will be called by libffi when the closure is called. The callback
-/// function takes four arguments: a CIF describing its arguments, a pointer for where to store its
-/// result, a pointer to an array of pointers to its arguments, and a userdata pointer. In this
-/// case, the Rust closure value `lambda` is passed as userdata to `lambda_callback`, which then
-/// invokes it.
-///
-/// ```
-/// use std::{mem, os::raw::c_void};
-///
-/// use libffi::{low, middle::*};
-///
-/// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
-///     _cif: &low::ffi_cif,
-///     result: &mut u64,
-///     args: *const *const c_void,
-///     userdata: &F,
-/// ) {
-///     let args = args as *const &u64;
-///     unsafe {
-///         let arg1 = **args.offset(0);
-///         let arg2 = **args.offset(1);
-///         *result = userdata(arg1, arg2);
-///     }
-/// }
-///
-/// let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64));
-/// let lambda = |x: u64, y: u64| x + y;
-/// let closure = Closure::new(cif, lambda_callback, &lambda);
-///
-/// let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
-///
-/// assert_eq!(11, fun(5, 6));
-/// assert_eq!(12, fun(5, 7));
-/// ```
-#[derive(Debug)]
-pub struct Closure<'a> {
-    _cif: Cif,
-    alloc: *mut ffi_closure,
-    code: CodePtr,
-    _marker: PhantomData<&'a ()>,
-}
-
-impl Drop for Closure<'_> {
-    fn drop(&mut self) {
-        // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
-        // freed by `low::closure_free` and only that function.
-        unsafe {
-            closure_free(self.alloc);
-        }
-    }
-}
-
-impl<'a> Closure<'a> {
-    /// Creates a new closure with immutable userdata.
-    ///
-    /// # Arguments
-    ///
-    /// - `cif` — describes the calling convention and argument and result types
-    /// - `callback` — the function to call when the closure is invoked
-    /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
-    ///   is called
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `low::prep_closure` fails to create the CIF. This is probably caused
-    /// by a bug in this crate and should be reported.
-    ///
-    /// # Result
-    ///
-    /// The new closure.
-    pub fn new<U, R>(cif: Cif, callback: Callback<U, R>, userdata: &'a U) -> Self {
-        let (alloc, code) = closure_alloc();
-
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
-        // the `low::prep_closure` call.
-        unsafe {
-            prep_closure(alloc, cif.cif, callback, ptr::from_ref(userdata), code).unwrap();
-        }
-
-        Closure {
-            _cif: cif,
-            alloc,
-            code,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Creates a new closure with mutable userdata.
-    ///
-    /// # Arguments
-    ///
-    /// - `cif` — describes the calling convention and argument and result types
-    /// - `callback` — the function to call when the closure is invoked
-    /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
-    ///   is called
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `low::prep_closure_mute` fails to create the CIF. This is probably
-    /// caused by a bug in this crate and should be reported.
-    ///
-    /// # Result
-    ///
-    /// The new closure.
-    pub fn new_mut<U, R>(cif: Cif, callback: CallbackMut<U, R>, userdata: &'a mut U) -> Self {
-        let (alloc, code) = closure_alloc();
-
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
-        // the `low::prep_closure_mut` call.
-        unsafe {
-            prep_closure_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code).unwrap();
-        }
-
-        Closure {
-            _cif: cif,
-            alloc,
-            code,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Obtains the callable code pointer for a closure.
-    ///
-    /// The result needs to be transmuted to the correct type before it can be called. If the type
-    /// is wrong, calling the result of `code_ptr` will result in undefined behavior.
-    pub fn code_ptr(&self) -> &unsafe extern "C" fn() {
-        // SAFETY: This may create a reference from a NULL pointer, should probably be fixed.
-        unsafe { self.code.as_fun() }
-    }
-
-    /// Transmutes the callable code pointer for a closure to a reference to any type. This is
-    /// intended to be used to transmute it to its correct function type in order to call it.
-    ///
-    /// # Safety
-    ///
-    /// This method allows transmuting to a reference to *any* sized type, and cannot check whether
-    /// the code pointer actually has that type. If the type is wrong using the reference will
-    /// result in undefined behavior.
-    pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
-        // SAFETY: See this function's safety section.
-        unsafe { self.code.as_any_ref_() }
-    }
-}
-
-/// The type of callback invoked by a [`ClosureOnce`].
-pub type CallbackOnce<U, R> = CallbackMut<Option<U>, R>;
-
-/// A closure that owns needs-drop data.
-///
-/// This allows the closure’s callback to take ownership of the data, in which case the userdata
-/// will be gone if called again.
-#[derive(Debug)]
-pub struct ClosureOnce {
-    alloc: *mut ffi_closure,
-    code: CodePtr,
-    _cif: Cif,
-    _userdata: Box<dyn Any>,
-}
-
-impl Drop for ClosureOnce {
-    fn drop(&mut self) {
-        // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
-        // freed by `low::closure_free` and only that function.
-        unsafe {
-            closure_free(self.alloc);
-        }
-    }
-}
-
-impl ClosureOnce {
-    /// Creates a new closure with owned userdata.
-    ///
-    /// # Arguments
-    ///
-    /// - `cif` — describes the calling convention and argument and result types
-    /// - `callback` — the function to call when the closure is invoked
-    /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
-    ///   called
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `low::prep_closure_mut` fails to create the CIF. This is probably
-    /// caused by a bug in this crate and should be reported.
-    ///
-    /// # Result
-    ///
-    /// The new closure.
-    pub fn new<U: Any, R>(cif: Cif, callback: CallbackOnce<U, R>, userdata: U) -> Self {
-        let userdata = Box::new(Some(userdata)) as Box<dyn Any>;
-        let (alloc, code) = closure_alloc();
-
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
-
-        {
-            let borrow = userdata.downcast_ref::<Option<U>>().unwrap();
-            // Safety: `Type` should ensure that no input to this function can cause safety issues
-            // in the `low::prep_closure_mut` call.
-            unsafe {
-                prep_closure_mut(
-                    alloc,
-                    cif.cif,
-                    callback,
-                    ptr::from_ref(borrow).cast_mut(),
-                    code,
-                )
-                .unwrap();
-            }
-        }
-
-        ClosureOnce {
-            alloc,
-            code,
-            _cif: cif,
-            _userdata: userdata,
-        }
-    }
-
-    /// Obtains the callable code pointer for a closure.
-    ///
-    /// The result needs to be transmuted to the correct type before it can be called. If the type
-    /// is wrong then undefined behavior will result.
-    pub fn code_ptr(&self) -> &unsafe extern "C" fn() {
-        // SAFETY: This may create a reference from a NULL pointer, should probably be fixed.
-        unsafe { self.code.as_fun() }
-    }
-
-    /// Transmutes the callable code pointer for a closure to a reference to any type. This is
-    /// intended to be used to transmute it to its correct function type in order to call it.
-    ///
-    /// # Safety
-    ///
-    /// This method allows transmuting to a reference to *any* sized type, and cannot check whether
-    /// the code pointer actually has that type. If the type is wrong then undefined behavior will
-    /// result.
-    pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
-        // SAFETY: See this function's safety section.
-        // Note that this may create a reference from a NULL pointer, should probably be fixed.
-        unsafe { self.code.as_any_ref_() }
-    }
-}
-
 #[cfg(all(test, not(miri)))]
 mod test {
     use super::*;
@@ -489,64 +237,6 @@ mod test {
 
     extern "C" fn add_it(n: i64, m: i64) -> i64 {
         n + m
-    }
-
-    #[test]
-    fn closure() {
-        let cif = Cif::new(&[Type::U64], Some(Type::U64));
-        let env: u64 = 5;
-        let closure = Closure::new(cif, callback, &env);
-
-        // SAFETY: `callback` expects one u64 and returns a u64.
-        let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
-
-        assert_eq!(11, fun(6));
-        assert_eq!(12, fun(7));
-    }
-
-    unsafe extern "C" fn callback(
-        _cif: &ffi_cif,
-        result: &mut u64,
-        args: *const *const c_void,
-        userdata: &u64,
-    ) {
-        let args = args.cast::<*const u64>();
-        // SAFETY: `callback` receives a pointer to an array with pointers to the provided
-        // arguments. This derefs a the pointer to the first argument, which should be a pointer to
-        // a u64.
-        *result = unsafe { **args } + *userdata;
-    }
-
-    #[test]
-    fn rust_lambda() {
-        let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64));
-        let env = |x: u64, y: u64| x + y;
-        let closure = Closure::new(cif, callback2, &env);
-
-        // SAFETY: `callback2` expects two u64 arguments and returns a u64.
-        let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
-
-        assert_eq!(11, fun(5, 6));
-    }
-
-    unsafe extern "C" fn callback2<F: Fn(u64, u64) -> u64>(
-        _cif: &ffi_cif,
-        result: &mut u64,
-        args: *const *const c_void,
-        userdata: &F,
-    ) {
-        let args = args.cast::<*const u64>();
-
-        // SAFETY: `callback2` receives a pointer to an array with pointers to the provided
-        // arguments. This derefs a the pointer to the first argument, which should be a pointer to
-        // a u64.
-        let first_arg = unsafe { **args.offset(0) };
-        // SAFETY: `callback2` receives a pointer to an array with pointers to the provided
-        // arguments. This derefs a the pointer to the second argument, which should be a pointer to
-        // a u64.
-        let second_arg = unsafe { **args.offset(1) };
-
-        *result = userdata(first_arg, second_arg);
     }
 
     #[test]

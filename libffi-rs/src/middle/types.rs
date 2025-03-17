@@ -13,7 +13,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 #[cfg(miri)]
-use miri::{double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64};
+use miri::{
+    double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64, void,
+};
 
 #[cfg(all(feature = "complex", not(target_env = "msvc")))]
 use crate::low::types::complex_double;
@@ -28,7 +30,7 @@ use crate::low::types::complex_longdouble;
 use crate::low::types::longdouble;
 #[cfg(not(miri))]
 use crate::low::types::{
-    double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64,
+    double, float, pointer, sint8, sint16, sint32, sint64, uint8, uint16, uint32, uint64, void,
 };
 use crate::low::{ffi_type, type_tag};
 
@@ -378,6 +380,11 @@ impl core::fmt::Debug for RawType {
     }
 }
 
+impl RawType {
+    /// Used to create a [`RawType`] for void.
+    pub(super) const VOID: Self = RawType(&raw mut void);
+}
+
 /// `RawType` requires custom clone logic due to all the "forgotten" `Box`es. A lot of pointer magic
 /// is happening here, so be sure to test with miri whenever making changes to this code.
 impl Clone for RawType {
@@ -640,7 +647,7 @@ mod miri {
         raw::{
             FFI_TYPE_DOUBLE, FFI_TYPE_FLOAT, FFI_TYPE_POINTER, FFI_TYPE_SINT8, FFI_TYPE_SINT16,
             FFI_TYPE_SINT32, FFI_TYPE_SINT64, FFI_TYPE_UINT8, FFI_TYPE_UINT16, FFI_TYPE_UINT32,
-            FFI_TYPE_UINT64,
+            FFI_TYPE_UINT64, FFI_TYPE_VOID,
         },
     };
 
@@ -719,6 +726,13 @@ mod miri {
         size: 0,
         alignment: 0,
         type_: FFI_TYPE_DOUBLE as u16,
+        elements: core::ptr::null_mut(),
+    };
+
+    pub(super) static mut void: ffi_type = ffi_type {
+        size: 0,
+        alignment: 0,
+        type_: FFI_TYPE_VOID as u16,
         elements: core::ptr::null_mut(),
     };
 }

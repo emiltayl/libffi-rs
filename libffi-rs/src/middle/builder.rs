@@ -3,7 +3,6 @@ extern crate alloc;
 use alloc::vec;
 #[cfg(not(test))]
 use alloc::vec::Vec;
-use core::any::Any;
 
 use super::types::Type;
 
@@ -17,7 +16,7 @@ use super::types::Type;
 ///
 /// Once the builder is configured, construct a `Cif` with [`Builder::into_cif`] or a closure with
 /// [`Builder::into_closure`], [`into_closure_mut`](Builder::into_closure_mut), or
-/// [`into_closure_once`](Builder::into_closure_once).
+/// [`into_closure_owned`](Builder::into_closure_owned).
 ///
 /// # Examples
 ///
@@ -150,7 +149,7 @@ impl Builder {
         super::Closure::new_mut(self.into_cif(), callback, userdata)
     }
 
-    /// Builds a one-shot closure.
+    /// Builds a closure that owns its `userdata`.
     ///
     /// # Arguments
     ///
@@ -161,11 +160,30 @@ impl Builder {
     /// # Result
     ///
     /// The new closure.
-    pub fn into_closure_once<U: Any, R>(
+    pub fn into_closure_owned<U: 'static, R>(
         self,
-        callback: super::CallbackOnce<U, R>,
+        callback: super::Callback<U, R>,
         userdata: U,
-    ) -> super::ClosureOnce {
-        super::ClosureOnce::new(self.into_cif(), callback, userdata)
+    ) -> super::ClosureOwned<U> {
+        super::ClosureOwned::new(self.into_cif(), callback, userdata)
+    }
+
+    /// Builds a closure that owns and can mutate its `userdata`.
+    ///
+    /// # Arguments
+    ///
+    /// - `callback` — the function to call when the closure is invoked
+    /// - `userdata` — the object to pass to `callback` along with the arguments when the closure is
+    ///   called
+    ///
+    /// # Result
+    ///
+    /// The new closure.
+    pub fn into_closure_owned_mut<U: 'static, R>(
+        self,
+        callback: super::CallbackMut<U, R>,
+        userdata: U,
+    ) -> super::ClosureOwned<U> {
+        super::ClosureOwned::new_mut(self.into_cif(), callback, userdata)
     }
 }

@@ -50,7 +50,6 @@ fn status_to_result<R>(status: ffi_status, good: R) -> Result<R> {
 #[repr(C)]
 pub struct CodePtr(pub *mut c_void);
 
-// TODO A `CodePtr` that cannot be NULL?
 // How useful is this type? Does it need all the methods?
 impl CodePtr {
     /// Initializes a code pointer from a function pointer.

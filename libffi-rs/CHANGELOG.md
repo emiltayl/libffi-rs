@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog] and this project adheres to
     possible, but it is still possible to use the old functions for backwards compatibility reasons.
 - Removed libc dependency
 - Made crates no_std
+- Renamed `middle::ClosureOnce` to `middle::ClosureOwned`
+- Deleted type alias `middle::CallbackOwned`
 
 ## [3.2.0] - 2023-03-28
 

@@ -15,7 +15,9 @@ rust-version = "1.85"
 libffi-sys = { path = "../libffi-sys-rs", version = "^2.3" }
 
 [features]
+default = ["middle"]
 complex = ["libffi-sys/complex"]
+middle = []
 system = ["libffi-sys/system"]
 
 [package.metadata.docs.rs]

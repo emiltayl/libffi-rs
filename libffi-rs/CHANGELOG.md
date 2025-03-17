@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog] and this project adheres to
 - Made crates no_std
 - Renamed `middle::ClosureOnce` to `middle::ClosureOwned`
 - Deleted type alias `middle::CallbackOwned`
+- Added a feature flag "middle", enabled by default, that can be disabled to avoid compilation of
+  the `middle` module.
 
 ## [3.2.0] - 2023-03-28
 

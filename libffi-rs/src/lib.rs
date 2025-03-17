@@ -66,4 +66,6 @@ pub mod raw {
 }
 
 pub mod low;
+
+#[cfg(feature = "middle")]
 pub mod middle;

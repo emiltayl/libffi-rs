@@ -134,7 +134,7 @@ for target in ${TARGETS[@]}; do
     export "CARGO_TARGET_${TARGET_TRIPLE}_RUNNER=qemu-$QEMU_ARCH -L /usr/$GCC_ARCH-linux-$ABI/"
 
     for toolchain in ${TOOLCHAINS[@]}; do
-        N=2
+        N=3
         n=0
         passed=0
         until [ $n -ge $N ] || [ $passed -eq 1 ]; do

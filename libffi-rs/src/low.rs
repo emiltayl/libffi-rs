@@ -772,7 +772,7 @@ mod test {
 
         // Provoke a FFI_BAD_ARGTYPE by bad values to `ffi_prep_cif_var`.
         let mut cif = ffi_cif::default();
-        let mut arg_types = [&raw mut types::float];
+        let mut arg_types = [&raw mut types::uint8];
 
         // SAFETY: Both `cif` and `args` are pointers to valid data.
         let result = unsafe {

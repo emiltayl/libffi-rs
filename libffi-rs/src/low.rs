@@ -21,7 +21,10 @@ pub enum Error {
     Typedef,
     /// Given a bad or unsupported ABI.
     Abi,
-    /// Given a NULL cif pointer or invalid type definitions for argument or return values.
+    /// Given invalid data structures to `ffi_prep_cif_var`.
+    ///
+    /// `ffi_prep_cif_var` only supports 64-bit floats (f64/double) and integers of at least `int`
+    /// size.
     ArgType,
     /// An unrecognized error code, potentially a bug.
     Unknown(u32),
@@ -719,4 +722,70 @@ pub unsafe fn prep_closure_mut<U, R>(
     };
 
     status_to_result(status, ())
+}
+
+#[cfg(all(test, not(miri)))]
+mod test {
+    use core::ptr;
+
+    use super::*;
+
+    #[test]
+    fn test_error_code_translation() {
+        // Provoke a FFI_BAD_TYPEDEF by a bad `type_` tag.
+        let mut bad_arg = ffi_type {
+            size: 0,
+            alignment: 0,
+            type_: 255, // This type tag should not exist
+            elements: ptr::null_mut(),
+        };
+        let mut cif = ffi_cif::default();
+
+        // SAFETY: Both `bad_arg` and `cif` are pointers to valid data.
+        let result = unsafe {
+            prep_cif(
+                &raw mut cif,
+                ffi_abi_FFI_DEFAULT_ABI,
+                0,
+                &raw mut bad_arg,
+                ptr::null_mut(),
+            )
+        };
+
+        assert_eq!(result, Err(Error::Typedef));
+
+        // Provoke a FFI_BAD_ABI by a bad ABI value
+        let mut cif = ffi_cif::default();
+
+        // SAFETY: `cif` is a pointer to valid data.
+        let result = unsafe {
+            prep_cif(
+                &raw mut cif,
+                0xdead_beef,
+                0,
+                &raw mut types::void,
+                ptr::null_mut(),
+            )
+        };
+
+        assert_eq!(result, Err(Error::Abi));
+
+        // Provoke a FFI_BAD_ARGTYPE by bad values to `ffi_prep_cif_var`.
+        let mut cif = ffi_cif::default();
+        let mut arg_types = [&raw mut types::float];
+
+        // SAFETY: Both `cif` and `args` are pointers to valid data.
+        let result = unsafe {
+            prep_cif_var(
+                &raw mut cif,
+                ffi_abi_FFI_DEFAULT_ABI,
+                0,
+                1,
+                &raw mut types::void,
+                (&raw mut arg_types).cast(),
+            )
+        };
+
+        assert_eq!(result, Err(Error::ArgType));
+    }
 }

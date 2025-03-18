@@ -1,5 +1,5 @@
 [package]
-name = "call_c_fn"
+name = "call_c_fn_varargs_fn"
 version = "0.1.0"
 edition = "2024"
 publish = false

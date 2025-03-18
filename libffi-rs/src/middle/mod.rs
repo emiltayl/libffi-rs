@@ -1,11 +1,12 @@
-//! Middle layer providing a somewhat safer (but still quite unsafe)
-//! API.
+//! Middle layer providing a somewhat safer (but still quite unsafe) API.
 //!
-//! The main idea of the middle layer is to wrap types [`low::ffi_cif`]
-//! and [`low::ffi_closure`] as [`Cif`] and [`Closure`], respectively,
-//! so that their resources are managed properly. However, calling a
-//! function via a CIF or closure is still unsafe because argument types
-//! aren’t checked.
+//! The main idea of the middle layer is to wrap types [`low::ffi_cif`] and [`low::ffi_closure`] as
+//! [`Cif`] and [`Closure`], respectively, so that their resources are managed properly. However,
+//! calling a function via a CIF or closure is still unsafe because argument types aren’t checked
+//! and the function may perform actions that are unsafe or unsound.
+//!
+//! [`low::ffi_cif`]: `crate::low::ffi_cif`
+//! [`low::ffi_closure`]: `crate::low::ffi_closure`
 
 extern crate alloc;
 #[cfg(not(test))]
@@ -66,18 +67,20 @@ pub fn arg<T>(r: &T) -> Arg {
 /// # Examples
 ///
 /// ```
-/// extern "C" fn add(x: f64, y: &f64) -> f64 {
+/// extern "C" fn add(x: u64, y: &u64) -> u64 {
 ///     x + y
 /// }
 ///
-/// use libffi::middle::*;
+/// use libffi::middle::{Cif, CodePtr, Type, arg};
 ///
-/// let args = [Type::F64, Type::Pointer];
-/// let cif = Cif::new(&args, Some(Type::F64));
+/// let args = [Type::U64, Type::Pointer];
+/// let cif = Cif::new(&args, Some(Type::U64));
 ///
-/// let n = unsafe { cif.call(CodePtr(add as *mut _), &[arg(&5f64), arg(&&6f64)]) };
-/// assert_eq!(11f64, n);
+/// let n: u64 = unsafe { cif.call(CodePtr(add as *mut _), &[arg(&5u64), arg(&&6u64)]) };
+/// assert_eq!(11, n);
 /// ```
+///
+/// [`low::ffi_cif`]: [`crate::low::ffi_cif`]
 pub struct Cif {
     cif: *mut ffi_cif,
     args: *mut [types::RawType],
@@ -221,6 +224,10 @@ impl Drop for Cif {
 mod test {
     use super::*;
 
+    extern "C" fn add_it(n: i64, m: i64) -> i64 {
+        n + m
+    }
+
     #[test]
     fn call() {
         let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64));
@@ -233,10 +240,6 @@ mod test {
         assert_eq!(12, f(5, 7));
         assert_eq!(13, f(6, 7));
         assert_eq!(15, f(8, 7));
-    }
-
-    extern "C" fn add_it(n: i64, m: i64) -> i64 {
-        n + m
     }
 
     #[test]
@@ -295,6 +298,14 @@ mod test {
             assert_eq!(struct_size, clone_struct_size);
             assert_eq!(substruct_size, clone_substruct_size);
         }
+    }
+
+    #[test]
+    #[should_panic = "Cif::call: passed wrong number of arguments"]
+    fn cif_call_panics_on_invalid_number_of_arguments() {
+        let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64));
+        // SAFETY: This should panic before any potential unsafe action happens.
+        let _result: i64 = unsafe { cif.call(CodePtr(add_it as *mut c_void), &[arg(&0u64)]) };
     }
 }
 
@@ -358,6 +369,18 @@ mod miritest {
             drop(cif_2);
             cif_3.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
         }
+    }
+
+    /// Verify that [`Cif`]'s `Debug` impl does not misbehave.
+    #[test]
+    fn verify_cif_debug_behavior() {
+        let cif = Cif::new(
+            &[Type::I8, Type::Pointer, Type::structure(&[Type::F64])],
+            Some(Type::U64),
+        );
+
+        // Invoke `cif`'s debug impl.
+        let _ = format!("{cif:?}");
     }
 }
 

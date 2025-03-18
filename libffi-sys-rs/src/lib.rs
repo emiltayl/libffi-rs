@@ -206,7 +206,8 @@ pub struct ffi_closure {
 impl Debug for ffi_closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("ffi_closure")
-            // SAFETY: TODO is this safe?
+            // SAFETY: This might be undefined behavior if `tramp` is a `ftramp`. It is probably
+            // okay for debug purposes, however.
             .field("tramp", unsafe { &self.tramp.tramp })
             .field("cif", &self.cif)
             .field("fun", &self.fun)

@@ -3,7 +3,7 @@
 //!
 //! This module also re-exports types and constants necessary for using the library, so it should
 //! not be generally necessary to use the `raw` module. While this is a bit “Rustier” than
-//! [`raw`](crate::raw), I’ve avoided drastic renaming in favor of hewing close to the libffi API.
+//! [`raw`], I’ve avoided drastic renaming in favor of hewing close to the libffi API.
 //! See [`middle`](crate::middle) for an easier-to-use approach.
 
 use core::{
@@ -30,7 +30,7 @@ pub enum Error {
     Unknown(u32),
 }
 
-/// The [`std::result::Result`] type specialized for libffi [`Error`]s.
+/// The [`core::result::Result`] type specialized for libffi [`Error`]s.
 pub type Result<T> = core::result::Result<T, Error>;
 
 // Converts the raw status type to a `Result`.
@@ -270,10 +270,10 @@ pub mod type_tag {
 /// # Examples
 ///
 /// ```
-/// use libffi::low::*;
+/// use libffi::low::{ffi_abi_FFI_DEFAULT_ABI, ffi_cif, ffi_type, prep_cif, types};
 ///
-/// let mut args: [*mut ffi_type; 2] = unsafe { [&raw mut types::sint32, &raw mut types::uint64] };
-/// let mut cif: ffi_cif = Default::default();
+/// let mut args = [&raw mut types::sint32, &raw mut types::uint64];
+/// let mut cif = ffi_cif::default();
 ///
 /// unsafe {
 ///     prep_cif(
@@ -370,17 +370,17 @@ pub unsafe fn prep_cif_var(
 /// # Examples
 ///
 /// ```
-/// use std::os::raw::c_void;
+/// use std::{os::raw::c_void, ptr};
 ///
-/// use libffi::low::*;
+/// use libffi::low::{CodePtr, call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, ffi_type, prep_cif, types};
 ///
 /// extern "C" fn c_function(a: u64, b: u64) -> u64 {
 ///     a + b
 /// }
 ///
 /// let result = unsafe {
-///     let mut args: Vec<*mut ffi_type> = vec![&raw mut types::uint64, &raw mut types::uint64];
-///     let mut cif: ffi_cif = Default::default();
+///     let mut args = [&raw mut types::uint64, &raw mut types::uint64];
+///     let mut cif = ffi_cif::default();
 ///
 ///     prep_cif(
 ///         &raw mut cif,
@@ -395,8 +395,8 @@ pub unsafe fn prep_cif_var(
 ///         &mut cif,
 ///         CodePtr(c_function as *mut _),
 ///         vec![
-///             &mut 4u64 as *mut _ as *mut c_void,
-///             &mut 5u64 as *mut _ as *mut c_void,
+///             ptr::from_mut(&mut 4u64).cast(),
+///             ptr::from_mut(&mut 5u64).cast(),
 ///         ]
 ///         .as_mut_ptr(),
 ///     )
@@ -436,9 +436,14 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
 /// # Examples
 ///
 /// ```
-/// use libffi::low::*;
+/// use libffi::low::{closure_alloc, closure_free};
 ///
 /// let (closure_handle, code_ptr) = closure_alloc();
+///
+/// // Use closure_alloc here
+///
+/// // Always be sure to call closure_free after use to free the closure's memory.
+/// unsafe { closure_free(closure_handle) };
 /// ```
 pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
     // SAFETY: Call `ffi_closure_alloc` with sufficient size for a `ffi_closure`. This writes back
@@ -461,7 +466,7 @@ pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
 /// # Examples
 ///
 /// ```
-/// use libffi::low::*;
+/// use libffi::low::{closure_alloc, closure_free};
 ///
 /// let (closure_handle, code_ptr) = closure_alloc();
 ///
@@ -545,7 +550,10 @@ pub type RawCallback = unsafe extern "C" fn(
 /// ```
 /// use std::{mem, os::raw::c_void};
 ///
-/// use libffi::low::*;
+/// use libffi::low::{
+///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
+///     prep_closure, types,
+/// };
 ///
 /// unsafe extern "C" fn callback(
 ///     _cif: &ffi_cif,
@@ -554,7 +562,7 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     userdata: &u64,
 /// ) {
 ///     unsafe {
-///         let args: *const &u64 = mem::transmute(args);
+///         let args: *const *const u64 = args.cast();
 ///         *result = **args + *userdata;
 ///     }
 /// }
@@ -564,8 +572,8 @@ pub type RawCallback = unsafe extern "C" fn(
 /// }
 ///
 /// unsafe {
-///     let mut cif: ffi_cif = Default::default();
-///     let mut args = [&raw mut types::uint64 as *mut _];
+///     let mut cif = ffi_cif::default();
+///     let mut args = [(&raw mut types::uint64).cast()];
 ///     let mut userdata: u64 = 5;
 ///
 ///     prep_cif(
@@ -593,6 +601,9 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     assert_eq!(12, add5(7));
 ///
 ///     assert_eq!(22, twice(add5, 12));
+///
+///     // Make sure to free the closure after we are finished with it.
+///     unsafe { closure_free(closure) };
 /// }
 /// ```
 pub unsafe fn prep_closure<U, R>(
@@ -652,7 +663,10 @@ pub unsafe fn prep_closure<U, R>(
 /// ```
 /// use std::{mem, os::raw::c_void};
 ///
-/// use libffi::low::*;
+/// use libffi::low::{
+///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
+///     prep_closure_mut, types,
+/// };
 ///
 /// unsafe extern "C" fn callback(
 ///     _cif: &ffi_cif,
@@ -661,7 +675,7 @@ pub unsafe fn prep_closure<U, R>(
 ///     userdata: &mut u64,
 /// ) {
 ///     unsafe {
-///         let args: *const &u64 = mem::transmute(args);
+///         let args: *const *const u64 = args.cast();
 ///         *result = *userdata;
 ///         *userdata += **args;
 ///     }
@@ -672,8 +686,8 @@ pub unsafe fn prep_closure<U, R>(
 /// }
 ///
 /// unsafe {
-///     let mut cif: ffi_cif = Default::default();
-///     let mut args = [&raw mut types::uint64 as *mut _];
+///     let mut cif = ffi_cif::default();
+///     let mut args = [(&raw mut types::uint64).cast()];
 ///     let mut userdata: u64 = 5;
 ///
 ///     prep_cif(
@@ -701,6 +715,9 @@ pub unsafe fn prep_closure<U, R>(
 ///     assert_eq!(11, add5(7));
 ///
 ///     assert_eq!(19, twice(add5, 1));
+///
+///     // Make sure to free the closure after we are finished with it.
+///     unsafe { closure_free(closure) };
 /// }
 /// ```
 pub unsafe fn prep_closure_mut<U, R>(

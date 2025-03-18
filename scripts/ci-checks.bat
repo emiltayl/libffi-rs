@@ -17,7 +17,7 @@ cargo +nightly fmt --manifest-path=examples/no_std_run/Cargo.toml --all --check 
 
 cargo +nightly clippy --all --all-targets --all-features --verbose -- -D warnings || goto failed
 cargo +nightly clippy --manifest-path=examples/no_std_run/Cargo.toml --all --all-features --verbose -- -D warnings || goto failed
-cmd /C "set CLIPPYFLAGS=-D warnings && set RUSTDOCFLAGS=--no-run --nocapture --test-builder scripts/clippy-driver.bat -Z unstable-options && cargo +nightly test --doc" || goto failed
+cmd /C "set CLIPPYFLAGS=-Wclippy::pedantic -Aclippy::semicolon_if_nothing_returned -Aclippy::used-underscore-items -D warnings && set RUSTDOCFLAGS=--no-run --nocapture --test-builder scripts/clippy-driver.bat -Z unstable-options && cargo +nightly test --doc" || goto failed
 
 @call :groupend
 

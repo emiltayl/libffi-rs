@@ -33,7 +33,10 @@ use crate::{
 /// ```
 /// use std::{mem, os::raw::c_void};
 ///
-/// use libffi::{low, middle::*};
+/// use libffi::{
+///     low,
+///     middle::{Cif, Closure, Type},
+/// };
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
@@ -41,11 +44,11 @@ use crate::{
 ///     args: *const *const c_void,
 ///     userdata: &F,
 /// ) {
-///     let args = args as *const &u64;
+///     let args: *const *const u64 = args.cast();
 ///     unsafe {
-///         let arg1 = **args.offset(0);
-///         let arg2 = **args.offset(1);
-///         *result = userdata(arg1, arg2);
+///         let arg_1 = **args.offset(0);
+///         let arg_2 = **args.offset(1);
+///         *result = userdata(arg_1, arg_2);
 ///     }
 /// }
 ///
@@ -64,16 +67,6 @@ pub struct Closure<'closure> {
     alloc: *mut ffi_closure,
     code: CodePtr,
     _marker: PhantomData<&'closure ()>,
-}
-
-impl Drop for Closure<'_> {
-    fn drop(&mut self) {
-        // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
-        // freed by `low::closure_free` and only that function.
-        unsafe {
-            closure_free(self.alloc);
-        }
-    }
 }
 
 impl<'closure> Closure<'closure> {
@@ -173,6 +166,16 @@ impl<'closure> Closure<'closure> {
     pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
         // SAFETY: See this function's safety section.
         unsafe { self.code.as_any_ref_() }
+    }
+}
+
+impl Drop for Closure<'_> {
+    fn drop(&mut self) {
+        // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
+        // freed by `low::closure_free` and only that function.
+        unsafe {
+            closure_free(self.alloc);
+        }
     }
 }
 

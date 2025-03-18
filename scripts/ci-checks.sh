@@ -55,7 +55,7 @@ if [ "${1}" != "NOLINT" ]; then
 
     run_command cargo +nightly clippy --all --all-targets --all-features --verbose -- -D warnings
     run_command cargo +nightly clippy --manifest-path=examples/no_std_run/Cargo.toml --all --all-features --verbose -- -D warnings
-    run_command CLIPPYFLAGS="\"-D warnings\"" RUSTDOCFLAGS="\"--no-run --nocapture --test-builder scripts/clippy-driver.sh -Z unstable-options\"" cargo +nightly test --doc
+    run_command CLIPPYFLAGS="\"-Wclippy::pedantic -Aclippy::semicolon_if_nothing_returned -Aclippy::used-underscore-items -D warnings\"" RUSTDOCFLAGS="\"--no-run --nocapture --test-builder scripts/clippy-driver.sh -Z unstable-options\"" cargo +nightly test --doc
 
     groupend
 

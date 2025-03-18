@@ -368,18 +368,6 @@ impl Type {
 #[repr(transparent)]
 pub(crate) struct RawType(pub(crate) *mut ffi_type);
 
-impl core::fmt::Debug for RawType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.0.is_null() {
-            write!(f, "RawType(NULL)")
-        } else {
-            // SAFETY: The pointer is not 0, so it _should_ only point to a `ffi_type` allocated by
-            // libffi or created from `Type`.
-            unsafe { (*self.0).fmt(f) }
-        }
-    }
-}
-
 impl RawType {
     /// Used to create a [`RawType`] for void.
     pub(super) const VOID: Self = RawType(&raw mut void);
@@ -439,6 +427,18 @@ impl Clone for RawType {
         cloned_box.elements = Box::into_raw(cloned_elements_boxed_slice).cast::<*mut ffi_type>();
 
         RawType(Box::into_raw(cloned_box))
+    }
+}
+
+impl core::fmt::Debug for RawType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.0.is_null() {
+            write!(f, "RawType(NULL)")
+        } else {
+            // SAFETY: The pointer is not 0, so it _should_ only point to a `ffi_type` allocated by
+            // libffi or created from `Type`.
+            unsafe { (*self.0).fmt(f) }
+        }
     }
 }
 
@@ -629,6 +629,23 @@ mod test {
         assert_eq!(struct_5.type_, type_tag::STRUCT);
 
         assert!(unsafe { (*struct_5.elements).is_null() });
+    }
+
+    /// Verify that [`RawType`]'s `Debug` impl does not misbehave.
+    #[test]
+    fn verify_rawtype_debug_behavior() {
+        let null_rawtype = RawType(core::ptr::null_mut());
+        let _ = format!("{null_rawtype:?}");
+
+        let struct_rawtype = Type::structure(&[
+            Type::U16,
+            Type::F32,
+            Type::structure(&[Type::I32, Type::structure(&[])]),
+            Type::Pointer,
+        ])
+        .as_raw();
+
+        let _ = format!("{struct_rawtype:?}");
     }
 }
 

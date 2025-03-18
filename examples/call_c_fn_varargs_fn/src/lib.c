@@ -6,7 +6,7 @@ uint32_t vararg_sum(uint32_t n_numbers, ...) {
     va_list args;
     va_start(args, n_numbers);
 
-    for (int i = 0; i < n_numbers; i++) {
+    for (uint32_t i = 0; i < n_numbers; i++) {
         sum += va_arg(args, int);
     }
 

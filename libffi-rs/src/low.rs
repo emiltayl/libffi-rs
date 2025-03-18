@@ -728,6 +728,8 @@ pub unsafe fn prep_closure_mut<U, R>(
 mod test {
     use core::ptr;
 
+    use libffi_sys::FFI_TYPE_STRUCT;
+
     use super::*;
 
     #[test]
@@ -771,17 +773,71 @@ mod test {
         assert_eq!(result, Err(Error::Abi));
 
         // Provoke a FFI_BAD_ARGTYPE by bad values to `ffi_prep_cif_var`.
+        // Test case copied from:
+        // https://github.com/libffi/libffi/blob/v3.4.7/testsuite/libffi.call/va_1.c#L75
+        let mut s_type = ffi_type::default();
+        let mut s_elements = [ptr::null_mut::<ffi_type>(); 3];
+
+        s_type.size = 0;
+        s_type.alignment = 0;
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "Type tags are stored as u32 for some reason, however all fit in a u16"
+        )]
+        {
+            s_type.type_ = FFI_TYPE_STRUCT as u16;
+        }
+
+        s_elements[0] = &raw mut types::uint8;
+        s_elements[1] = &raw mut types::uint8;
+        s_type.elements = s_elements.as_mut_ptr();
+
+        let mut l_type = ffi_type::default();
+        let mut l_elements = [ptr::null_mut::<ffi_type>(); 6];
+
+        l_type.size = 0;
+        l_type.alignment = 0;
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "Type tags are stored as u32 for some reason, however all fit in a u16"
+        )]
+        {
+            l_type.type_ = FFI_TYPE_STRUCT as u16;
+        }
+
+        l_elements[0] = &raw mut types::uint32;
+        l_elements[1] = &raw mut types::uint32;
+        l_elements[2] = &raw mut types::uint32;
+        l_elements[3] = &raw mut types::uint32;
+        l_elements[4] = &raw mut types::uint32;
+        l_type.elements = l_elements.as_mut_ptr();
+
         let mut cif = ffi_cif::default();
-        let mut arg_types = [&raw mut types::uint8];
+        let mut arg_types = [
+            &raw mut types::sint32,
+            &raw mut s_type,
+            &raw mut l_type,
+            &raw mut s_type,
+            &raw mut types::uint8,
+            &raw mut types::sint8,
+            &raw mut types::uint16,
+            &raw mut types::sint16,
+            &raw mut types::uint32,
+            &raw mut types::sint32,
+            &raw mut types::uint64,
+            &raw mut types::sint64,
+            &raw mut types::double,
+            &raw mut types::double,
+        ];
 
         // SAFETY: Both `cif` and `args` are pointers to valid data.
         let result = unsafe {
             prep_cif_var(
                 &raw mut cif,
                 ffi_abi_FFI_DEFAULT_ABI,
-                0,
                 1,
-                &raw mut types::void,
+                14,
+                &raw mut types::sint32,
                 (&raw mut arg_types).cast(),
             )
         };

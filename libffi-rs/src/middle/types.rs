@@ -494,10 +494,7 @@ impl Drop for RawType {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::raw::{
-        FFI_TYPE_SINT8, FFI_TYPE_SINT16, FFI_TYPE_SINT32, FFI_TYPE_UINT8, FFI_TYPE_UINT16,
-        FFI_TYPE_UINT32,
-    };
+    use crate::low::type_tag::{SINT8, SINT16, SINT32, STRUCT, UINT8, UINT16, UINT32};
 
     #[test]
     fn verify_raw_type_layout() {
@@ -560,73 +557,49 @@ mod test {
         let struct_1 = unsafe { &*raw_type.0 };
         assert_eq!(struct_1.size, 0);
         assert_eq!(struct_1.alignment, 0);
-        assert_eq!(struct_1.type_, type_tag::STRUCT);
+        assert_eq!(struct_1.type_, STRUCT);
 
-        assert_eq!(unsafe { (**struct_1.elements).type_ }, type_tag::STRUCT);
-        assert_eq!(
-            u32::from(unsafe { (**struct_1.elements.add(1)).type_ }),
-            FFI_TYPE_SINT8
-        );
-        assert_eq!(
-            u32::from(unsafe { (**struct_1.elements.add(2)).type_ }),
-            FFI_TYPE_UINT8
-        );
+        assert_eq!(unsafe { (**struct_1.elements).type_ }, STRUCT);
+        assert_eq!(unsafe { (**struct_1.elements.add(1)).type_ }, SINT8);
+        assert_eq!(unsafe { (**struct_1.elements.add(2)).type_ }, UINT8);
         assert!(unsafe { (*struct_1.elements.add(3)).is_null() });
 
         // Second struct: i16, struct, u16
         let struct_2 = unsafe { &**struct_1.elements };
         assert_eq!(struct_2.size, 0);
         assert_eq!(struct_2.alignment, 0);
-        assert_eq!(struct_2.type_, type_tag::STRUCT);
+        assert_eq!(struct_2.type_, STRUCT);
 
-        assert_eq!(
-            u32::from(unsafe { (**struct_2.elements).type_ }),
-            FFI_TYPE_SINT16
-        );
-        assert_eq!(
-            unsafe { (**struct_2.elements.add(1)).type_ },
-            type_tag::STRUCT
-        );
-        assert_eq!(
-            u32::from(unsafe { (**struct_2.elements.add(2)).type_ }),
-            FFI_TYPE_UINT16
-        );
+        assert_eq!(unsafe { (**struct_2.elements).type_ }, SINT16);
+        assert_eq!(unsafe { (**struct_2.elements.add(1)).type_ }, STRUCT);
+        assert_eq!(unsafe { (**struct_2.elements.add(2)).type_ }, UINT16);
         assert!(unsafe { (*struct_2.elements.add(3)).is_null() });
 
         // Third struct: i8, u8, struct
         let struct_3 = unsafe { &**(struct_2.elements.add(1)) };
         assert_eq!(struct_3.size, 0);
         assert_eq!(struct_3.alignment, 0);
-        assert_eq!(struct_3.type_, type_tag::STRUCT);
+        assert_eq!(struct_3.type_, STRUCT);
 
-        assert_eq!(
-            u32::from(unsafe { (**struct_3.elements).type_ }),
-            FFI_TYPE_SINT32
-        );
-        assert_eq!(
-            u32::from(unsafe { (**struct_3.elements.add(1)).type_ }),
-            FFI_TYPE_UINT32
-        );
-        assert_eq!(
-            unsafe { (**struct_3.elements.add(2)).type_ },
-            type_tag::STRUCT
-        );
+        assert_eq!(unsafe { (**struct_3.elements).type_ }, SINT32);
+        assert_eq!(unsafe { (**struct_3.elements.add(1)).type_ }, UINT32);
+        assert_eq!(unsafe { (**struct_3.elements.add(2)).type_ }, STRUCT);
         assert!(unsafe { (*struct_3.elements.add(3)).is_null() });
 
         // Fourth struct: struct
         let struct_4 = unsafe { &**(struct_3.elements.add(2)) };
         assert_eq!(struct_4.size, 0);
         assert_eq!(struct_4.alignment, 0);
-        assert_eq!(struct_4.type_, type_tag::STRUCT);
+        assert_eq!(struct_4.type_, STRUCT);
 
-        assert_eq!(unsafe { (**struct_4.elements).type_ }, type_tag::STRUCT);
+        assert_eq!(unsafe { (**struct_4.elements).type_ }, STRUCT);
         assert!(unsafe { (*struct_4.elements.add(1)).is_null() });
 
         // Fifth and final struct: nothing
         let struct_5 = unsafe { &**(struct_4.elements) };
         assert_eq!(struct_5.size, 0);
         assert_eq!(struct_5.alignment, 0);
-        assert_eq!(struct_5.type_, type_tag::STRUCT);
+        assert_eq!(struct_5.type_, STRUCT);
 
         assert!(unsafe { (*struct_5.elements).is_null() });
     }
@@ -659,12 +632,11 @@ mod test {
     reason = "libffi-sys-rs currently exposes type tags as u32, however, all fit in a u16"
 )]
 mod miri {
-    use crate::{
-        low::ffi_type,
-        raw::{
-            FFI_TYPE_DOUBLE, FFI_TYPE_FLOAT, FFI_TYPE_POINTER, FFI_TYPE_SINT8, FFI_TYPE_SINT16,
-            FFI_TYPE_SINT32, FFI_TYPE_SINT64, FFI_TYPE_UINT8, FFI_TYPE_UINT16, FFI_TYPE_UINT32,
-            FFI_TYPE_UINT64, FFI_TYPE_VOID,
+    use crate::low::{
+        ffi_type,
+        type_tag::{
+            DOUBLE, FLOAT, POINTER, SINT8, SINT16, SINT32, SINT64, UINT8, UINT16, UINT32, UINT64,
+            VOID,
         },
     };
 
@@ -672,84 +644,84 @@ mod miri {
     pub(super) static mut sint8: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_SINT8 as u16,
+        type_: SINT8,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut uint8: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_UINT8 as u16,
+        type_: UINT8,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut sint16: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_SINT16 as u16,
+        type_: SINT16,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut uint16: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_UINT16 as u16,
+        type_: UINT16,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut sint32: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_SINT32 as u16,
+        type_: SINT32,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut uint32: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_UINT32 as u16,
+        type_: UINT32,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut sint64: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_SINT64 as u16,
+        type_: SINT64,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut uint64: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_UINT64 as u16,
+        type_: UINT64,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut pointer: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_POINTER as u16,
+        type_: POINTER,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut float: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_FLOAT as u16,
+        type_: FLOAT,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut double: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_DOUBLE as u16,
+        type_: DOUBLE,
         elements: core::ptr::null_mut(),
     };
 
     pub(super) static mut void: ffi_type = ffi_type {
         size: 0,
         alignment: 0,
-        type_: FFI_TYPE_VOID as u16,
+        type_: VOID,
         elements: core::ptr::null_mut(),
     };
 }

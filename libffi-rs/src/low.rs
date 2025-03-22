@@ -208,28 +208,40 @@ pub mod types {
 /// };
 /// ```
 pub mod type_tag {
-    use core::ffi::c_ushort;
-
     use crate::raw;
 
-    /// Indicates a structure type.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "TODO review whether this can be changed/use different data types"
-    )]
-    pub const STRUCT: c_ushort = raw::ffi_type_enum_STRUCT as c_ushort;
-
-    /// Indicates a complex number type.
-    ///
-    /// This item is enabled by `#[cfg(feature = "complex")]`. It is not available when building for
-    /// msvc.
-    #[cfg(feature = "complex")]
-    #[cfg(not(target_env = "msvc"))]
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "TODO review whether this can be changed/use different data types"
-    )]
-    pub const COMPLEX: c_ushort = raw::ffi_type_enum_COMPLEX as c_ushort;
+    /// Type tag representing a `void` return type.
+    pub const VOID: u16 = raw::FFI_TYPE_VOID;
+    /// Type tag representing a C `int`.
+    pub const INT: u16 = raw::FFI_TYPE_INT;
+    /// Type tag representing a `f32`.
+    pub const FLOAT: u16 = raw::FFI_TYPE_FLOAT;
+    /// Type tag representing a `f64`.
+    pub const DOUBLE: u16 = raw::FFI_TYPE_DOUBLE;
+    /// Type tag representing a C `long double`.
+    pub const LONGDOUBLE: u16 = raw::FFI_TYPE_LONGDOUBLE;
+    /// Type tag representing a `i8`.
+    pub const SINT8: u16 = raw::FFI_TYPE_SINT8;
+    /// Type tag representing a `u8`.
+    pub const UINT8: u16 = raw::FFI_TYPE_UINT8;
+    /// Type tag representing a `i16`.
+    pub const SINT16: u16 = raw::FFI_TYPE_SINT16;
+    /// Type tag representing a `u16`.
+    pub const UINT16: u16 = raw::FFI_TYPE_UINT16;
+    /// Type tag representing a `i32`.
+    pub const SINT32: u16 = raw::FFI_TYPE_SINT32;
+    /// Type tag representing a `u32`.
+    pub const UINT32: u16 = raw::FFI_TYPE_UINT32;
+    /// Type tag representing a `i64`.
+    pub const SINT64: u16 = raw::FFI_TYPE_SINT64;
+    /// Type tag representing a `u64`.
+    pub const UINT64: u16 = raw::FFI_TYPE_UINT64;
+    /// Type tag representing a custom struct.
+    pub const STRUCT: u16 = raw::FFI_TYPE_STRUCT;
+    /// Type tag representing a pointer.
+    pub const POINTER: u16 = raw::FFI_TYPE_POINTER;
+    /// Type tag representing a complex.
+    pub const COMPLEX: u16 = raw::FFI_TYPE_COMPLEX;
 }
 
 /// Initalizes a CIF (Call Interface) with the given ABI
@@ -745,8 +757,6 @@ pub unsafe fn prep_closure_mut<U, R>(
 mod test {
     use core::ptr;
 
-    use libffi_sys::FFI_TYPE_STRUCT;
-
     use super::*;
 
     #[test]
@@ -797,13 +807,7 @@ mod test {
 
         s_type.size = 0;
         s_type.alignment = 0;
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "Type tags are stored as u32 for some reason, however all fit in a u16"
-        )]
-        {
-            s_type.type_ = FFI_TYPE_STRUCT as u16;
-        }
+        s_type.type_ = type_tag::STRUCT;
 
         s_elements[0] = &raw mut types::uint8;
         s_elements[1] = &raw mut types::uint8;
@@ -814,13 +818,7 @@ mod test {
 
         l_type.size = 0;
         l_type.alignment = 0;
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "Type tags are stored as u32 for some reason, however all fit in a u16"
-        )]
-        {
-            l_type.type_ = FFI_TYPE_STRUCT as u16;
-        }
+        l_type.type_ = type_tag::STRUCT;
 
         l_elements[0] = &raw mut types::uint32;
         l_elements[1] = &raw mut types::uint32;

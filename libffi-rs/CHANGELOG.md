@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog] and this project adheres to
 - Deleted type alias `middle::CallbackOwned`
 - Added a feature flag "middle", enabled by default, that can be disabled to avoid compilation of
   the `middle` module.
+- Made FFI_TYPE_* constants `u16` instead of `u32` to match what is used in the `ffi_type` struct.
+- Added all type tags to `low::type_tag`.
 
 ## [3.2.0] - 2023-03-28
 

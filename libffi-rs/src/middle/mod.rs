@@ -388,14 +388,7 @@ mod miritest {
 mod miri {
     use core::ffi::c_void;
 
-    use crate::{
-        low::{CodePtr, ffi_abi, ffi_cif, ffi_type},
-        raw::{
-            FFI_TYPE_DOUBLE, FFI_TYPE_FLOAT, FFI_TYPE_POINTER, FFI_TYPE_SINT8, FFI_TYPE_SINT16,
-            FFI_TYPE_SINT32, FFI_TYPE_SINT64, FFI_TYPE_STRUCT, FFI_TYPE_UINT8, FFI_TYPE_UINT16,
-            FFI_TYPE_UINT32, FFI_TYPE_UINT64,
-        },
-    };
+    use crate::low::{CodePtr, ffi_abi, ffi_cif, ffi_type, type_tag};
 
     /// Helper function to write to values in ffi_type to make sure that possible memory writes are
     /// checked.
@@ -465,42 +458,42 @@ mod miri {
     unsafe fn deref_argument(type_tag: u16, ptr: *const c_void) {
         // SAFETY: See this function's safety section.
         unsafe {
-            match u32::from(type_tag) {
-                FFI_TYPE_SINT8 => {
-                    core::ptr::read_volatile::<i8>(ptr.cast());
+            match type_tag {
+                type_tag::SINT8 => {
+                    core::ptr::read::<i8>(ptr.cast());
                 }
-                FFI_TYPE_UINT8 => {
-                    core::ptr::read_volatile::<u8>(ptr.cast());
+                type_tag::UINT8 => {
+                    core::ptr::read::<u8>(ptr.cast());
                 }
-                FFI_TYPE_SINT16 => {
-                    core::ptr::read_volatile::<i16>(ptr.cast());
+                type_tag::SINT16 => {
+                    core::ptr::read::<i16>(ptr.cast());
                 }
-                FFI_TYPE_UINT16 => {
-                    core::ptr::read_volatile::<u16>(ptr.cast());
+                type_tag::UINT16 => {
+                    core::ptr::read::<u16>(ptr.cast());
                 }
-                FFI_TYPE_SINT32 => {
-                    core::ptr::read_volatile::<i32>(ptr.cast());
+                type_tag::SINT32 => {
+                    core::ptr::read::<i32>(ptr.cast());
                 }
-                FFI_TYPE_UINT32 => {
-                    core::ptr::read_volatile::<u32>(ptr.cast());
+                type_tag::UINT32 => {
+                    core::ptr::read::<u32>(ptr.cast());
                 }
-                FFI_TYPE_SINT64 => {
-                    core::ptr::read_volatile::<i64>(ptr.cast());
+                type_tag::SINT64 => {
+                    core::ptr::read::<i64>(ptr.cast());
                 }
-                FFI_TYPE_UINT64 => {
-                    core::ptr::read_volatile::<u64>(ptr.cast());
+                type_tag::UINT64 => {
+                    core::ptr::read::<u64>(ptr.cast());
                 }
-                FFI_TYPE_POINTER => {
-                    core::ptr::read_volatile::<*const c_void>(ptr.cast());
+                type_tag::POINTER => {
+                    core::ptr::read::<*const c_void>(ptr.cast());
                 }
-                FFI_TYPE_FLOAT => {
-                    core::ptr::read_volatile::<f32>(ptr.cast());
+                type_tag::FLOAT => {
+                    core::ptr::read::<f32>(ptr.cast());
                 }
-                FFI_TYPE_DOUBLE => {
-                    core::ptr::read_volatile::<f64>(ptr.cast());
+                type_tag::DOUBLE => {
+                    core::ptr::read::<f64>(ptr.cast());
                 }
                 // No test for dereferencing custom structs as of now.
-                FFI_TYPE_STRUCT => assert!(!ptr.is_null()),
+                type_tag::STRUCT => assert!(!ptr.is_null()),
                 _ => panic!("Unknown type tag {type_tag} detected."),
             }
         }

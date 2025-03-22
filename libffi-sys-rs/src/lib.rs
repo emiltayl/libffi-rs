@@ -63,7 +63,7 @@ pub type ffi_arg = c_ulong;
 pub type ffi_sarg = c_long;
 pub type ffi_abi = u32;
 pub type ffi_status = u32;
-pub type ffi_type_enum = u32;
+pub type ffi_type_enum = u16;
 
 pub const FFI_64_BIT_MAX: u64 = 9_223_372_036_854_775_807;
 pub const FFI_CLOSURES: u32 = 1;
@@ -71,23 +71,23 @@ pub const FFI_SIZEOF_ARG: usize = size_of::<c_long>();
 // NOTE: This only differs from FFI_SIZEOF_ARG on ILP platforms, which Rust does not support
 pub const FFI_SIZEOF_JAVA_RAW: usize = FFI_SIZEOF_ARG;
 
-pub const FFI_TYPE_VOID: u32 = 0;
-pub const FFI_TYPE_INT: u32 = 1;
-pub const FFI_TYPE_FLOAT: u32 = 2;
-pub const FFI_TYPE_DOUBLE: u32 = 3;
-pub const FFI_TYPE_LONGDOUBLE: u32 = 4;
-pub const FFI_TYPE_UINT8: u32 = 5;
-pub const FFI_TYPE_SINT8: u32 = 6;
-pub const FFI_TYPE_UINT16: u32 = 7;
-pub const FFI_TYPE_SINT16: u32 = 8;
-pub const FFI_TYPE_UINT32: u32 = 9;
-pub const FFI_TYPE_SINT32: u32 = 10;
-pub const FFI_TYPE_UINT64: u32 = 11;
-pub const FFI_TYPE_SINT64: u32 = 12;
-pub const FFI_TYPE_STRUCT: u32 = 13;
-pub const FFI_TYPE_POINTER: u32 = 14;
-pub const FFI_TYPE_COMPLEX: u32 = 15;
-pub const FFI_TYPE_LAST: u32 = 15;
+pub const FFI_TYPE_VOID: u16 = 0;
+pub const FFI_TYPE_INT: u16 = 1;
+pub const FFI_TYPE_FLOAT: u16 = 2;
+pub const FFI_TYPE_DOUBLE: u16 = 3;
+pub const FFI_TYPE_LONGDOUBLE: u16 = 4;
+pub const FFI_TYPE_UINT8: u16 = 5;
+pub const FFI_TYPE_SINT8: u16 = 6;
+pub const FFI_TYPE_UINT16: u16 = 7;
+pub const FFI_TYPE_SINT16: u16 = 8;
+pub const FFI_TYPE_UINT32: u16 = 9;
+pub const FFI_TYPE_SINT32: u16 = 10;
+pub const FFI_TYPE_UINT64: u16 = 11;
+pub const FFI_TYPE_SINT64: u16 = 12;
+pub const FFI_TYPE_STRUCT: u16 = 13;
+pub const FFI_TYPE_POINTER: u16 = 14;
+pub const FFI_TYPE_COMPLEX: u16 = 15;
+pub const FFI_TYPE_LAST: u16 = 15;
 
 pub const ffi_status_FFI_OK: ffi_status = 0;
 pub const ffi_status_FFI_BAD_TYPEDEF: ffi_status = 1;
@@ -122,10 +122,24 @@ pub struct ffi_cif {
     pub rtype: *mut ffi_type,
     pub bytes: c_uint,
     pub flags: c_uint,
+
+    // libffi/src/aarch64/ffitarget.h
+    // #ifdef _WIN32
+    // #define FFI_EXTRA_CIF_FIELDS unsigned is_variadic
     #[cfg(all(target_arch = "aarch64", target_os = "windows"))]
     pub is_variadic: c_uint,
+
+    // libffi/src/aarch64/ffitarget.h
+    // #if defined (__APPLE__)
+    // #define FFI_EXTRA_CIF_FIELDS unsigned aarch64_nfixedargs
     #[cfg(all(target_arch = "aarch64", target_vendor = "apple"))]
     pub aarch64_nfixedargs: c_uint,
+
+    // libffi/src/arm/ffitarget.h
+    // #define FFI_EXTRA_CIF_FIELDS			\
+    // int vfp_used;					\
+    // unsigned short vfp_reg_free, vfp_nargs;	\
+    // signed char vfp_args[16]			\
     #[cfg(target_arch = "arm")]
     pub vfp_used: c_int,
     #[cfg(target_arch = "arm")]
@@ -134,23 +148,20 @@ pub struct ffi_cif {
     pub vfp_nargs: c_ushort,
     #[cfg(target_arch = "arm")]
     pub vfp_args: [c_schar; 16],
+
+    // libffi/src/powerpc/ffitarget.h
+    // #if defined (POWERPC) || defined (POWERPC_FREEBSD)
+    // ...
+    // # define FFI_EXTRA_CIF_FIELDS unsigned nfixedargs
     #[cfg(any(target_arch = "powerpc", target_arch = "powerpc64"))]
     pub nfixedargs: c_uint,
+
+    // libffi/src/riscv/ffitarget.h
+    // #define FFI_EXTRA_CIF_FIELDS unsigned riscv_nfixedargs; unsigned riscv_unused;
     #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
     pub riscv_nfixedargs: c_uint,
     #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
     pub riscv_unused: c_uint,
-    #[cfg(target_arch = "loongarch64")]
-    pub loongarch_nfixedargs: c_uint,
-    #[cfg(target_arch = "loongarch64")]
-    pub loongarch_unused: c_uint,
-    #[cfg(any(
-        target_arch = "mips",
-        target_arch = "mips32r6",
-        target_arch = "mips64",
-        target_arch = "mips64r6"
-    ))]
-    pub mips_nfixedargs: c_uint,
 }
 
 impl Default for ffi_cif {
@@ -223,12 +234,14 @@ impl Default for ffi_closure {
     }
 }
 
+/// Warning: not tested
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct ffi_raw_closure {
     pub tramp: [c_char; FFI_TRAMPOLINE_SIZE],
     pub cif: *mut ffi_cif,
-    // See: https://github.com/libffi/libffi/blob/3a7580da73b7f16f275277316d00e3497cbb5a8c/include/ffi.h.in#L364
+
+    // See: https://github.com/libffi/libffi/blob/v3.4.7/include/ffi.h.in#L386
     #[cfg(not(target_arch = "x86"))]
     pub translate_args: Option<
         unsafe extern "C" fn(
@@ -240,6 +253,7 @@ pub struct ffi_raw_closure {
     >,
     #[cfg(not(target_arch = "x86"))]
     pub this_closure: *mut c_void,
+
     pub fun: Option<
         unsafe extern "C" fn(
             arg1: *mut ffi_cif,
@@ -282,7 +296,8 @@ impl Default for ffi_raw_closure {
 pub struct ffi_java_raw_closure {
     pub tramp: [c_char; FFI_TRAMPOLINE_SIZE],
     pub cif: *mut ffi_cif,
-    // See: https://github.com/libffi/libffi/blob/3a7580da73b7f16f275277316d00e3497cbb5a8c/include/ffi.h.in#L390
+
+    // See: https://github.com/libffi/libffi/blob/v3.4.7/include/ffi.h.in#L412
     #[cfg(not(target_arch = "x86"))]
     pub translate_args: Option<
         unsafe extern "C" fn(
@@ -294,6 +309,7 @@ pub struct ffi_java_raw_closure {
     >,
     #[cfg(not(target_arch = "x86"))]
     pub this_closure: *mut c_void,
+
     pub fun: Option<
         unsafe extern "C" fn(
             arg1: *mut ffi_cif,
@@ -346,6 +362,7 @@ pub struct ffi_go_closure {
         ),
     >,
 }
+
 impl Default for ffi_go_closure {
     fn default() -> Self {
         // SAFETY: Zeroed does not cause any invalid bit patterns in ffi_closure.
@@ -396,8 +413,9 @@ unsafe extern "C" {
 
     pub fn ffi_raw_size(cif: *mut ffi_cif) -> usize;
 
-    // See: https://github.com/libffi/libffi/blob/3a7580da73b7f16f275277316d00e3497cbb5a8c/include/ffi.h.in#L286
+    // See: https://github.com/libffi/libffi/blob/v3.4.7/include/ffi.h.in#L302
     #[cfg(not(target_arch = "x86"))]
+    #[deprecated = "Deprecated in libffi 3.3"]
     pub fn ffi_java_raw_call(
         cif: *mut ffi_cif,
         fn_: Option<unsafe extern "C" fn()>,
@@ -405,24 +423,28 @@ unsafe extern "C" {
         avalue: *mut ffi_java_raw,
     );
 
+    #[deprecated = "Deprecated in libffi 3.3"]
     pub fn ffi_java_ptrarray_to_raw(
         cif: *mut ffi_cif,
         args: *mut *mut c_void,
         raw: *mut ffi_java_raw,
     );
 
+    #[deprecated = "Deprecated in libffi 3.3"]
     pub fn ffi_java_raw_to_ptrarray(
         cif: *mut ffi_cif,
         raw: *mut ffi_java_raw,
         args: *mut *mut c_void,
     );
 
+    #[deprecated = "Deprecated in libffi 3.3"]
     pub fn ffi_java_raw_size(cif: *mut ffi_cif) -> usize;
 
     pub fn ffi_closure_alloc(size: usize, code: *mut *mut c_void) -> *mut c_void;
 
     pub fn ffi_closure_free(arg1: *mut c_void);
 
+    #[deprecated = "Deprecated in libffi 3.3, use `ffi_prep_closure_loc` instead"]
     pub fn ffi_prep_closure(
         arg1: *mut ffi_closure,
         arg2: *mut ffi_cif,
@@ -481,8 +503,9 @@ unsafe extern "C" {
         codeloc: *mut c_void,
     ) -> ffi_status;
 
-    // See: https://github.com/libffi/libffi/blob/3a7580da73b7f16f275277316d00e3497cbb5a8c/include/ffi.h.in#L419
+    // See: https://github.com/libffi/libffi/blob/v3.4.7/include/ffi.h.in#L441
     #[cfg(not(target_arch = "x86"))]
+    #[deprecated = "Deprecated in libffi 3.3"]
     pub fn ffi_prep_java_raw_closure(
         arg1: *mut ffi_java_raw_closure,
         cif: *mut ffi_cif,
@@ -497,8 +520,9 @@ unsafe extern "C" {
         user_data: *mut c_void,
     ) -> ffi_status;
 
-    // See: https://github.com/libffi/libffi/blob/3a7580da73b7f16f275277316d00e3497cbb5a8c/include/ffi.h.in#L419
+    // See: https://github.com/libffi/libffi/blob/v3.4.7/include/ffi.h.in#L448
     #[cfg(not(target_arch = "x86"))]
+    #[deprecated = "Deprecated in libffi 3.3"]
     pub fn ffi_prep_java_raw_closure_loc(
         arg1: *mut ffi_java_raw_closure,
         cif: *mut ffi_cif,
@@ -576,7 +600,10 @@ mod test {
 
     #[test]
     fn test_function_with_two_arguments() {
-        // SAFETY: I don't know if this lint was made for tests like this...
+        // SAFETY:
+        // * cif is properly allocated
+        // * type structures are properly defined
+        // * `add` is a function that accept two `u64`s and returns a `u64`
         unsafe {
             let mut cif = ffi_cif::default();
             let mut arg_types: Vec<*mut ffi_type> =

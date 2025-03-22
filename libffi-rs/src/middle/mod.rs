@@ -81,6 +81,10 @@ pub fn arg<T>(r: &T) -> Arg {
 /// ```
 ///
 /// [`low::ffi_cif`]: [`crate::low::ffi_cif`]
+#[allow(
+    clippy::struct_field_names,
+    reason = "`cif` properly describes what is stored in the field (the cif)."
+)]
 pub struct Cif {
     cif: *mut ffi_cif,
     args: *mut [types::RawType],

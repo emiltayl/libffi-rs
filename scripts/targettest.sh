@@ -73,7 +73,7 @@ set_globals() {
     fi
 }
 
-FAILED=0
+FAILED=""
 GCC_VERSION=$(gcc --version | grep -oE -m 1 '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | cut -d . -f 1)
 TARGETS=("powerpc64le-unknown-linux-gnu" "powerpc64-unknown-linux-gnu " "aarch64-unknown-linux-gnu" "armv7-unknown-linux-gnueabihf" "riscv64gc-unknown-linux-gnu" "s390x-unknown-linux-gnu")
 TOOLCHAINS=("1.85.0" "stable" "nightly")
@@ -111,7 +111,7 @@ for toolchain in ${TOOLCHAINS[@]}; do
 
     run_command_noexit cargo "+${toolchain}" test --target i686-unknown-linux-gnu --workspace --verbose -- --color=always
     if [ $? -ne 0 ]; then
-        FAILED=$((FAILED+1))
+        FAILED="${FAILED} ${toolchain}-i686-unknown-linux-gnu"
         if [ -z ${CI+x} ]; then
             echo "Test failed"
         else
@@ -160,18 +160,18 @@ for target in ${TARGETS[@]}; do
             else
                 echo "::error::${N} attempts failed, failing test"
             fi
-            FAILED=$((FAILED+1))
+            FAILED="${FAILED} ${toolchain}-${target}"
         fi
     done
 
     groupend
 done
 
-if [ "${FAILED}" -gt 0 ]; then
+if [ "${FAILED}" != "" ]; then
     if [ -z ${CI+x} ]; then
-        echo "${FAILED} targets failed to execute"
+        echo "The following toolchains failed the tests: ${FAILED}"
     else
-        echo "::error::${FAILED} targets failed to execute"
+        echo "::error::The following toolchains failed the tests: ${FAILED}"
     fi
     exit 101
 else

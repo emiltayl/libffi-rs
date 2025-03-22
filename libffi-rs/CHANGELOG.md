@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog] and this project adheres to
   the `middle` module.
 - Made FFI_TYPE_* constants `u16` instead of `u32` to match what is used in the `ffi_type` struct.
 - Added all type tags to `low::type_tag`.
+- Fixed a bug where small return types could lead to out-of-bounds writes in `low::call`.
 
 ## [3.2.0] - 2023-03-28
 

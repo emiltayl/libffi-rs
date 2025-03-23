@@ -110,6 +110,7 @@ groupstart "Testing i686-unknown-linux-gnu"
 for toolchain in ${TOOLCHAINS[@]}; do
 
     run_command_noexit cargo "+${toolchain}" test --target i686-unknown-linux-gnu --workspace --verbose -- --color=always
+    run_command_noexit cargo "+${toolchain}" run --target i686-unknown-linux-gnu --example call_c_fn 
     if [ $? -ne 0 ]; then
         FAILED="${FAILED} ${toolchain}-i686-unknown-linux-gnu"
         if [ -z ${CI+x} ]; then
@@ -147,6 +148,7 @@ for target in ${TARGETS[@]}; do
             fi
 
             run_command_noexit cargo "+${toolchain}" test --target ${target} --workspace --verbose -- --color=always
+            run_command_noexit cargo "+${toolchain}" run --target ${target} --example call_c_fn 
             if [ $? -eq 0 ]; then
                 passed=1
             else

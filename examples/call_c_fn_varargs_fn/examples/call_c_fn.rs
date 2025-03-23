@@ -101,5 +101,8 @@ fn catch_extern_panic() {
 fn main() {
     call_vararg_sum();
     call_ascii_to_upper();
+
+    // Unwinding panics fail on these platforms. See https://github.com/emiltayl/libffi-rs/issues/28
+    #[cfg(not(any(target_arch = "arm", target_arch = "riscv64")))]
     catch_extern_panic();
 }

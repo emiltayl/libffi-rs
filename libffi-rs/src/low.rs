@@ -477,8 +477,9 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
 /// # Safety
 /// `result` must be a pointer to a `usize` and `mem::size_of::<R> <= mem::size_of::<usize>()`.
 unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const usize) -> R {
-    if type_tag == type_tag::FLOAT || type_tag == type_tag::STRUCT {
+    if type_tag == type_tag::FLOAT || type_tag == type_tag::STRUCT || type_tag == type_tag::VOID {
         // SAFETY: Testing has shown that these types appear at `result`.
+        // For voids, this should be optimized to a NOP.
         unsafe { result.cast::<R>().read() }
     } else {
         // SAFETY: Consider `*result` an array with `size_of::<usize>() / size_of::<R>()` items of
@@ -923,6 +924,7 @@ mod test {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     struct LargeStruct(u64, u64, u64, u64);
 
+    extern "C" fn return_nothing() {}
     extern "C" fn return_i8(a: i8) -> i8 {
         a
     }
@@ -985,7 +987,7 @@ mod test {
                         ffi_abi_FFI_DEFAULT_ABI,
                         1,
                         &raw mut $ffitype,
-                        arg_ty_array.as_mut_ptr()
+                        arg_ty_array.as_mut_ptr(),
                     ).unwrap();
 
                     call(&mut cif, CodePtr($fn as *mut _), arg_array.as_mut_ptr())
@@ -999,6 +1001,28 @@ mod test {
     /// Test to ensure that values returned from functions called through libffi are correct.
     #[test]
     fn test_return_values() {
+        // Test a function returning nothing.
+        {
+            let mut cif = ffi_cif::default();
+
+            // SAFETY:
+            // `cif` points to a properly aligned `ffi_cif`.
+            // The return value is a pointer to an `ffi_type`.
+            // `nargs` is 0, so argument and argument type array are never read.
+            unsafe {
+                prep_cif(
+                    &raw mut cif,
+                    ffi_abi_FFI_DEFAULT_ABI,
+                    0,
+                    &raw mut types::void,
+                    ptr::null_mut(),
+                )
+                .unwrap();
+
+                call::<()>(&mut cif, CodePtr(return_nothing as *mut _), ptr::null_mut());
+            }
+        }
+
         test_return_value!(i8, types::sint8, 0x55, return_i8);
         test_return_value!(u8, types::uint8, 0xAA, return_u8);
         test_return_value!(i16, types::sint16, 0x5555, return_i16);

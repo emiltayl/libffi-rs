@@ -56,6 +56,8 @@ use crate::{
 /// let lambda = |x: u64, y: u64| x + y;
 /// let closure = Closure::new(cif, lambda_callback, &lambda);
 ///
+/// // If calling lambda callback with valid input parameters was potentially unsafe, `fun` wouild
+/// // have to be typed as `&unsafe extern "C"...`.
 /// let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
 ///
 /// assert_eq!(11, fun(5, 6));

@@ -382,9 +382,9 @@ pub unsafe fn prep_cif_var(
 /// # Examples
 ///
 /// ```
-/// use std::{os::raw::c_void, ptr};
+/// use std::{ffi::c_void, ptr};
 ///
-/// use libffi::low::{CodePtr, call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, ffi_type, prep_cif, types};
+/// use libffi::low::{CodePtr, call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif, types};
 ///
 /// extern "C" fn c_function(a: u64, b: u64) -> u64 {
 ///     a + b

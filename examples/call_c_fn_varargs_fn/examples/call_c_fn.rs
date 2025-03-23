@@ -2,17 +2,14 @@
 
 use std::{ffi::CString, ptr};
 
-unsafe extern "C" {
-    unsafe fn vararg_sum(n_numbers: u32, ...) -> u32;
-    unsafe fn ascii_to_upper(str: *mut i8);
-}
-
+use call_c_fn_varargs_fn::{ascii_to_upper, call_do_panic, vararg_sum};
 use libffi::{
     low::{call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif_var, types},
     middle::{Cif, CodePtr, Type, arg},
 };
 
-fn main() {
+/// Demonstrating calling the vararg `vararg_sum` function.
+fn call_vararg_sum() {
     let mut sum_5_numbers_cif = ffi_cif::default();
     // SAFETY: Create a `ffi_cif` that can be used to call a vararg function that accepts one fixed
     // `u32` and varargs. This specific CIF can be used to provide exactly 5 varargs to the
@@ -52,7 +49,10 @@ fn main() {
 
         assert_eq!(result, 15);
     }
+}
 
+/// Demonstrating passing a `CString` to a function implemented in C.
+fn call_ascii_to_upper() {
     let ascii_to_upper_cif = Cif::new(&[Type::Pointer], None);
 
     let original_string = "thIs STriNg, should be UPPERcased?";
@@ -75,4 +75,31 @@ fn main() {
     };
 
     assert_eq!(&modified_string, &uppercase_string);
+}
+
+/// Demonstrating unwinding a panic from an extern function.
+fn catch_extern_panic() {
+    let old_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {
+        // Do nothing, to avoid printing the panic
+    }));
+
+    let catch_unwind_result = std::panic::catch_unwind(|| {
+        let do_panic_cif = Cif::new(&[], None);
+
+        // SAFETY: Call a valid function that does not take any arguments or return any values.
+        unsafe { do_panic_cif.call::<()>(CodePtr(call_do_panic as *mut _), &[]) }
+    });
+
+    // Reset to the previous panic hook
+    std::panic::set_hook(old_hook);
+
+    // Check that code in the catch_unwind closure actually panicked, which results in an `Err`.
+    assert!(catch_unwind_result.is_err());
+}
+
+fn main() {
+    call_vararg_sum();
+    call_ascii_to_upper();
+    catch_extern_panic();
 }

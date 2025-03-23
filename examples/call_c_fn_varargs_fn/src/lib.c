@@ -23,3 +23,8 @@ void ascii_to_upper(char *str) {
         str++;
     }
 }
+
+void do_panic();
+void call_do_panic() {
+    do_panic();
+}

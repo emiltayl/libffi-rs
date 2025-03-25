@@ -563,12 +563,36 @@ pub unsafe fn closure_free(closure: *mut ffi_closure) {
 pub type Callback<U, R> =
     unsafe extern "C" fn(cif: &ffi_cif, result: &mut R, args: *const *const c_void, userdata: &U);
 
+/// The type of function called by a closure that can unwind panics.
+///
+/// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
+/// the type of the result. The parameters are not typed, since they are passed as a C array of
+/// `void*`.
+pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
+    cif: &ffi_cif,
+    result: &mut R,
+    args: *const *const c_void,
+    userdata: &U,
+);
+
 /// The type of function called by a mutable closure.
 ///
 /// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
 /// the type of the result. The parameters are not typed, since they are passed as a C array of
 /// `void*`.
 pub type CallbackMut<U, R> = unsafe extern "C" fn(
+    cif: &ffi_cif,
+    result: &mut R,
+    args: *const *const c_void,
+    userdata: &mut U,
+);
+
+/// The type of function called by a mutable closure that can unwind panics.
+///
+/// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
+/// the type of the result. The parameters are not typed, since they are passed as a C array of
+/// `void*`.
+pub type CallbackUnwindableMut<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
     result: &mut R,
     args: *const *const c_void,
@@ -696,6 +720,93 @@ pub unsafe fn prep_closure<U, R>(
     status_to_result(status, ())
 }
 
+/// Identical to [`prep_closure`] except that panics in the closure may unwind. See [`prep_closure`]
+/// for details about calling this function and its arguments.
+///
+/// # Safety
+///
+/// See [`prep_closure`'s safety documentation](prep_closure#safety).
+///
+/// # Result
+///
+/// `Ok(())` for success or `Err(e)` for failure.
+///
+/// # Errors
+///
+/// This function will return an error if the `cif`'s ABI is invalid.
+///
+/// # Example
+///
+/// Allocating a closure that will panic and catching it with [`std::panic::catch_unwind`].
+///
+/// ```
+/// use std::{mem, os::raw::c_void, panic, ptr};
+///
+/// use libffi::low::{
+///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
+///     prep_closure_unwindable, types,
+/// };
+///
+/// unsafe extern "C-unwind" fn callback(
+///     _cif: &ffi_cif,
+///     result: &mut (),
+///     args: *const *const c_void,
+///     userdata: &(),
+/// ) {
+///     panic!("Panic from a libffi closure");
+/// }
+///
+/// unsafe {
+///     let mut cif = ffi_cif::default();
+///
+///     prep_cif(
+///         &raw mut cif,
+///         ffi_abi_FFI_DEFAULT_ABI,
+///         0,
+///         &raw mut types::void,
+///         ptr::null_mut(),
+///     )
+///     .unwrap();
+///
+///     let (closure, code) = closure_alloc();
+///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
+///
+///     prep_closure_unwindable(closure, &raw mut cif, callback, &(), code).unwrap();
+///
+///     let catch_result = panic::catch_unwind(move || {
+///         this_panics();
+///         println!("This should not print as `this_panics` paniced.");
+///     });
+///
+///     // If a panic is "caught", `catch_unwind` returns an `Err`.
+///     assert!(catch_result.is_err());
+///     // Make sure to free the closure after we are finished with it.
+///     unsafe { closure_free(closure) };
+/// }
+/// ```
+pub unsafe fn prep_closure_unwindable<U, R>(
+    closure: *mut ffi_closure,
+    cif: *mut ffi_cif,
+    callback: CallbackUnwindable<U, R>,
+    userdata: *const U,
+    code: CodePtr,
+) -> Result<()> {
+    // SAFETY: Up to the caller, see this function's safety section.
+    let status = unsafe {
+        raw::ffi_prep_closure_loc(
+            closure,
+            cif,
+            Some(mem::transmute::<CallbackUnwindable<U, R>, RawCallback>(
+                callback,
+            )),
+            userdata as *mut c_void,
+            code.as_mut_ptr(),
+        )
+    };
+
+    status_to_result(status, ())
+}
+
 /// Initializes a mutable closure with a callback function and (mutable) userdata.
 ///
 /// After allocating a closure with [`closure_alloc`], it needs to be initialized with a function
@@ -802,6 +913,97 @@ pub unsafe fn prep_closure_mut<U, R>(
             closure,
             cif,
             Some(mem::transmute::<CallbackMut<U, R>, RawCallback>(callback)),
+            userdata.cast::<c_void>(),
+            code.as_mut_ptr(),
+        )
+    };
+
+    status_to_result(status, ())
+}
+
+/// Identical to [`prep_closure_mut`] except that panics in the closure may unwind. See
+/// [`prep_closure_mut`] for details about calling this function and its arguments.
+///
+/// # Safety
+///
+/// See [`prep_closure_mut`'s safety documentation](prep_closure_mut#safety).
+///
+/// # Result
+///
+/// `Ok(())` for success or `Err(e)` for failure.
+///
+/// # Errors
+///
+/// This function will return an error if the `cif`'s ABI is invalid.
+///
+/// # Example
+///
+/// Allocating a closure that will panic and catching it with [`std::panic::catch_unwind`].
+///
+/// ```
+/// use std::{mem, os::raw::c_void, panic, ptr};
+///
+/// use libffi::low::{
+///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
+///     prep_closure_unwindable_mut, types,
+/// };
+///
+/// unsafe extern "C-unwind" fn callback(
+///     _cif: &ffi_cif,
+///     result: &mut (),
+///     args: *const *const c_void,
+///     userdata: &mut u64,
+/// ) {
+///     *userdata += 1;
+///     panic!("Panic from a libffi closure");
+///     *userdata += 1;
+/// }
+///
+/// unsafe {
+///     let mut cif = ffi_cif::default();
+///
+///     prep_cif(
+///         &raw mut cif,
+///         ffi_abi_FFI_DEFAULT_ABI,
+///         0,
+///         &raw mut types::void,
+///         ptr::null_mut(),
+///     )
+///     .unwrap();
+///
+///     let (closure, code) = closure_alloc();
+///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
+///     let mut userdata: u64 = 0;
+///
+///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &mut userdata, code).unwrap();
+///
+///     let catch_result = panic::catch_unwind(move || {
+///         this_panics();
+///     });
+///
+///     // If a panic is "caught", `catch_unwind` returns an `Err`.
+///     assert!(catch_result.is_err());
+///     // Userdata was incremented once before `this_panics` panicked.
+///     assert_eq!(userdata, 1);
+///     // Make sure to free the closure after we are finished with it.
+///     unsafe { closure_free(closure) };
+/// }
+/// ```
+pub unsafe fn prep_closure_unwindable_mut<U, R>(
+    closure: *mut ffi_closure,
+    cif: *mut ffi_cif,
+    callback: CallbackUnwindableMut<U, R>,
+    userdata: *mut U,
+    code: CodePtr,
+) -> Result<()> {
+    // SAFETY: Up to the caller, see this function's safety section.
+    let status = unsafe {
+        raw::ffi_prep_closure_loc(
+            closure,
+            cif,
+            Some(mem::transmute::<CallbackUnwindableMut<U, R>, RawCallback>(
+                callback,
+            )),
             userdata.cast::<c_void>(),
             code.as_mut_ptr(),
         )

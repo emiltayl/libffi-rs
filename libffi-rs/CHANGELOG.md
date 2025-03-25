@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog] and this project adheres to
 - Made FFI_TYPE_* constants `u16` instead of `u32` to match what is used in the `ffi_type` struct.
 - Added all type tags to `low::type_tag`.
 - Fixed a bug where small return types could lead to out-of-bounds writes in `low::call`.
+- Added unwindable variants for closures, that is closures that can unwind the stack if they panic.
 
 ## [3.2.0] - 2023-03-28
 

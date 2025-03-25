@@ -17,7 +17,10 @@ use core::{ffi::c_void, ptr};
 use miri::{call, prep_cif};
 
 use crate::low::ffi_cif;
-pub use crate::low::{Callback, CallbackMut, CodePtr, ffi_abi as FfiAbi, ffi_abi_FFI_DEFAULT_ABI};
+pub use crate::low::{
+    Callback, CallbackMut, CallbackUnwindable, CallbackUnwindableMut, CodePtr, ffi_abi as FfiAbi,
+    ffi_abi_FFI_DEFAULT_ABI,
+};
 #[cfg(not(miri))]
 use crate::low::{call, prep_cif};
 

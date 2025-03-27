@@ -8,7 +8,7 @@
 
 use core::{
     ffi::{c_uint, c_void},
-    mem,
+    mem::{MaybeUninit, transmute},
 };
 
 use crate::raw;
@@ -436,7 +436,7 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
         // Alignments are a power of 2 (1, 2, 4, 8, etc). `result`'s alignment is greater than or
         // equal to that of `R`, so `result` should be properly aligned for `R` since a larger
         // alignment is always divisible by any of the smaller alignments.
-        let mut result = mem::MaybeUninit::<usize>::uninit();
+        let mut result = MaybeUninit::<usize>::uninit();
 
         // SAFETY: It is up to the caller to ensure that the ffi_call is safe to perform.
         unsafe {
@@ -456,7 +456,7 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
             }
         }
     } else {
-        let mut result = mem::MaybeUninit::<R>::uninit();
+        let mut result = MaybeUninit::<R>::uninit();
 
         // SAFETY: It is up to the caller to ensure that the ffi_call is safe to perform.
         unsafe {
@@ -518,7 +518,7 @@ pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
     // SAFETY: Call `ffi_closure_alloc` with sufficient size for a `ffi_closure`. This writes back
     // a pointer to `code_pointer`, at which point it can be assumed to be initialized.
     unsafe {
-        let mut code_pointer = mem::MaybeUninit::<*mut c_void>::uninit();
+        let mut code_pointer = MaybeUninit::<*mut c_void>::uninit();
         let closure = raw::ffi_closure_alloc(size_of::<ffi_closure>(), code_pointer.as_mut_ptr());
 
         (
@@ -560,8 +560,12 @@ pub unsafe fn closure_free(closure: *mut ffi_closure) {
 /// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
 /// the type of the result. The parameters are not typed, since they are passed as a C array of
 /// `void*`.
-pub type Callback<U, R> =
-    unsafe extern "C" fn(cif: &ffi_cif, result: &mut R, args: *const *const c_void, userdata: &U);
+pub type Callback<U, R> = unsafe extern "C" fn(
+    cif: &ffi_cif,
+    result: &mut MaybeUninit<R>,
+    args: *const *const c_void,
+    userdata: &U,
+);
 
 /// The type of function called by a closure that can unwind panics.
 ///
@@ -570,7 +574,7 @@ pub type Callback<U, R> =
 /// `void*`.
 pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
-    result: &mut R,
+    result: &mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &U,
 );
@@ -582,7 +586,7 @@ pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
 /// `void*`.
 pub type CallbackMut<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
-    result: &mut R,
+    result: &mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &mut U,
 );
@@ -594,7 +598,7 @@ pub type CallbackMut<U, R> = unsafe extern "C" fn(
 /// `void*`.
 pub type CallbackUnwindableMut<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
-    result: &mut R,
+    result: &mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &mut U,
 );
@@ -650,13 +654,13 @@ pub type RawCallback = unsafe extern "C" fn(
 ///
 /// unsafe extern "C" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut u64,
+///     result: &mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &u64,
 /// ) {
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
-///         *result = **args + *userdata;
+///         result.write(**args + *userdata);
 ///     }
 /// }
 ///
@@ -711,7 +715,7 @@ pub unsafe fn prep_closure<U, R>(
         raw::ffi_prep_closure_loc(
             closure,
             cif,
-            Some(mem::transmute::<Callback<U, R>, RawCallback>(callback)),
+            Some(transmute::<Callback<U, R>, RawCallback>(callback)),
             userdata as *mut c_void,
             code.as_mut_ptr(),
         )
@@ -749,7 +753,7 @@ pub unsafe fn prep_closure<U, R>(
 ///
 /// unsafe extern "C-unwind" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut (),
+///     result: &mut mem::MaybeUninit<()>,
 ///     args: *const *const c_void,
 ///     userdata: &(),
 /// ) {
@@ -796,9 +800,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
         raw::ffi_prep_closure_loc(
             closure,
             cif,
-            Some(mem::transmute::<CallbackUnwindable<U, R>, RawCallback>(
-                callback,
-            )),
+            Some(transmute::<CallbackUnwindable<U, R>, RawCallback>(callback)),
             userdata as *mut c_void,
             code.as_mut_ptr(),
         )
@@ -850,13 +852,13 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///
 /// unsafe extern "C" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut u64,
+///     result: &mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &mut u64,
 /// ) {
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
-///         *result = *userdata;
+///         result.write(*userdata);
 ///         *userdata += **args;
 ///     }
 /// }
@@ -912,7 +914,7 @@ pub unsafe fn prep_closure_mut<U, R>(
         raw::ffi_prep_closure_loc(
             closure,
             cif,
-            Some(mem::transmute::<CallbackMut<U, R>, RawCallback>(callback)),
+            Some(transmute::<CallbackMut<U, R>, RawCallback>(callback)),
             userdata.cast::<c_void>(),
             code.as_mut_ptr(),
         )
@@ -950,7 +952,7 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///
 /// unsafe extern "C-unwind" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut (),
+///     result: &mut mem::MaybeUninit<()>,
 ///     args: *const *const c_void,
 ///     userdata: &mut u64,
 /// ) {
@@ -1001,7 +1003,7 @@ pub unsafe fn prep_closure_unwindable_mut<U, R>(
         raw::ffi_prep_closure_loc(
             closure,
             cif,
-            Some(mem::transmute::<CallbackUnwindableMut<U, R>, RawCallback>(
+            Some(transmute::<CallbackUnwindableMut<U, R>, RawCallback>(
                 callback,
             )),
             userdata.cast::<c_void>(),

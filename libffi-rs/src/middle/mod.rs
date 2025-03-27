@@ -11,7 +11,7 @@
 extern crate alloc;
 #[cfg(not(test))]
 use alloc::boxed::Box;
-use core::{ffi::c_void, ptr};
+use core::{ffi::c_void, marker::PhantomData, ptr};
 
 #[cfg(miri)]
 use miri::{call, prep_cif};
@@ -39,14 +39,14 @@ pub use builder::Builder;
 /// the argument in the [`Arg`] struct accomplishes the necessary coercion.
 #[derive(Clone, Debug)]
 #[repr(C)]
-pub struct Arg(*mut c_void);
+pub struct Arg<'arg>(*mut c_void, PhantomData<&'arg c_void>);
 
-impl Arg {
+impl Arg<'_> {
     /// Coerces an argument reference into the [`Arg`] type.
     ///
     /// This is used to wrap each argument pointer before passing them to [`Cif::call`].
     pub fn new<T>(r: &T) -> Self {
-        Arg(ptr::from_ref(r) as *mut c_void)
+        Arg(ptr::from_ref(r) as *mut c_void, PhantomData)
     }
 }
 
@@ -171,7 +171,7 @@ impl Cif {
 
         // SAFETY: This is inherently unsafe and it is up to the caller of this function to uphold
         // all required safety guarantees.
-        unsafe { call::<R>(self.cif, fun, args.as_ptr() as *mut *mut c_void) }
+        unsafe { call::<R>(self.cif, fun, args.as_ptr().cast_mut().cast()) }
     }
 }
 
@@ -226,6 +226,13 @@ impl Drop for Cif {
         }
     }
 }
+
+// SAFETY: It is safe to send a `Cif` to another thread, after it has been created `Cif` is not
+// modified until it is dropped.
+unsafe impl Send for Cif {}
+// SAFETY: It is safe to send a `Cif` to another thread, after it has been created `Cif` is not
+// modified until it is dropped.
+unsafe impl Sync for Cif {}
 
 #[cfg(all(test, not(miri)))]
 mod test {
@@ -507,7 +514,7 @@ mod miri {
     }
 
     /// Replaces [`low::call`] for tests with miri. Note that this function will not actually call
-    /// `fun`.
+    /// `_fun`.
     ///
     /// # Safety
     ///

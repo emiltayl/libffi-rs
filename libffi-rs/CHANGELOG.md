@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog] and this project adheres to
     been changed. See the documentation for updated definitions.
   * Deprecated many functions in `middle::Type`, preferring the usage of enum variants where
     possible, but it is still possible to use the old functions for backwards compatibility reasons.
+  * `middle::Arg` now has a lifetime to ensure that the arguments themselves do not outlive `Arg`.
+  * Made `middle::Cif` and `middle::types::RawType` `Send` and `Sync`.
 - Removed libc dependency
 - Made crates no_std
 - Renamed `middle::ClosureOnce` to `middle::ClosureOwned`
@@ -29,6 +31,7 @@ The format is based on [Keep a Changelog] and this project adheres to
 - Added all type tags to `low::type_tag`.
 - Fixed a bug where small return types could lead to out-of-bounds writes in `low::call`.
 - Added unwindable variants for closures, that is closures that can unwind the stack if they panic.
+- Closures now receive a `&mut MaybeUninit<R>` instead of `&mut R` for results.
 
 ## [3.2.0] - 2023-03-28
 

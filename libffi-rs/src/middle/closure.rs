@@ -40,7 +40,7 @@ use crate::{
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
-///     result: &mut u64,
+///     result: &mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &F,
 /// ) {
@@ -48,7 +48,7 @@ use crate::{
 ///     unsafe {
 ///         let arg_1 = **args.offset(0);
 ///         let arg_2 = **args.offset(1);
-///         *result = userdata(arg_1, arg_2);
+///         result.write(userdata(arg_1, arg_2));
 ///     }
 /// }
 ///
@@ -493,7 +493,7 @@ impl<U> ClosureOwned<U> {
 
 #[cfg(all(test, not(miri)))]
 mod test {
-    use core::ffi::c_void;
+    use core::{ffi::c_void, mem::MaybeUninit};
 
     use super::*;
     use crate::{low::ffi_cif, middle::Type};
@@ -513,7 +513,7 @@ mod test {
 
     unsafe extern "C" fn callback(
         _cif: &ffi_cif,
-        result: &mut u64,
+        result: &mut MaybeUninit<u64>,
         args: *const *const c_void,
         userdata: &u64,
     ) {
@@ -521,7 +521,7 @@ mod test {
         // SAFETY: `callback` receives a pointer to an array with pointers to the provided
         // arguments. This derefs a the pointer to the first argument, which should be a pointer to
         // a u64.
-        *result = unsafe { **args } + *userdata;
+        result.write(unsafe { **args } + *userdata);
     }
 
     #[test]
@@ -538,7 +538,7 @@ mod test {
 
     unsafe extern "C" fn callback2<F: Fn(u64, u64) -> u64>(
         _cif: &ffi_cif,
-        result: &mut u64,
+        result: &mut MaybeUninit<u64>,
         args: *const *const c_void,
         userdata: &F,
     ) {
@@ -553,7 +553,7 @@ mod test {
         // a u64.
         let second_arg = unsafe { **args.offset(1) };
 
-        *result = userdata(first_arg, second_arg);
+        result.write(userdata(first_arg, second_arg));
     }
 
     #[test]
@@ -600,7 +600,7 @@ mod test {
 
     extern "C-unwind" fn do_panic(
         _cif: &ffi_cif,
-        _result: &mut (),
+        _result: &mut MaybeUninit<()>,
         _args: *const *const c_void,
         _userdata: &(),
     ) {
@@ -609,7 +609,7 @@ mod test {
 
     extern "C-unwind" fn do_panic_mut(
         _cif: &ffi_cif,
-        _result: &mut (),
+        _result: &mut MaybeUninit<()>,
         _args: *const *const c_void,
         _userdata: &mut (),
     ) {
@@ -620,14 +620,14 @@ mod test {
 /// Tests to ensure that the memory management for closures is correct.
 #[cfg(test)]
 mod miritest {
-    use core::ffi::c_void;
+    use core::{ffi::c_void, mem::MaybeUninit};
 
     use super::*;
     use crate::low::ffi_cif;
 
     unsafe extern "C" fn dummy_callback(
         _cif: &ffi_cif,
-        _result: &mut u32,
+        _result: &mut MaybeUninit<u32>,
         _args: *const *const c_void,
         _userdata: &u32,
     ) {

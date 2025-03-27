@@ -589,7 +589,9 @@ mod test {
     use super::*;
     #[cfg(all(feature = "complex", not(target_env = "msvc")))]
     use crate::low::type_tag::COMPLEX;
-    use crate::low::type_tag::{LONGDOUBLE, SINT8, SINT16, SINT32, STRUCT, UINT8, UINT16, UINT32};
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    use crate::low::type_tag::LONGDOUBLE;
+    use crate::low::type_tag::{SINT8, SINT16, SINT32, STRUCT, UINT8, UINT16, UINT32};
 
     #[test]
     fn verify_raw_type_layout() {
@@ -778,54 +780,56 @@ mod test {
         }
 
         #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-        let raw_complex_longdouble = Type::ComplexLongDouble.as_raw();
-        let raw_complex_longdouble_clone = raw_complex_longdouble.clone().clone();
-        drop(raw_complex_longdouble);
+        {
+            let raw_complex_longdouble = Type::ComplexLongDouble.as_raw();
+            let raw_complex_longdouble_clone = raw_complex_longdouble.clone().clone();
+            drop(raw_complex_longdouble);
 
-        // SAFETY: raw_complex_longdouble_clone should be a properly initialized `RawType`.
-        unsafe {
-            assert_eq!((*raw_complex_longdouble_clone.0).type_, COMPLEX);
-            assert_eq!(
-                (*raw_complex_longdouble_clone.0).elements,
-                (*(&raw const complex_longdouble)).elements
-            );
-        }
-
-        let raw_struct_elements = [
-            Type::ComplexFloat,
-            Type::ComplexDouble,
-            #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-            Type::ComplexLongDouble,
-        ];
-        let raw_struct = Type::structure(&raw_struct_elements).as_raw();
-        let raw_struct_clone = raw_struct.clone().clone();
-        drop(raw_struct);
-
-        // SAFETY: raw_struct should be a properly initialized `RawType` with 2 or 3 elements.
-        unsafe {
-            let elements_ptr = (*raw_struct_clone.0).elements;
-            let element_1 = *elements_ptr;
-            assert_eq!((*element_1).type_, COMPLEX);
-            assert_eq!(
-                (*element_1).elements,
-                (*(&raw const complex_float)).elements
-            );
-
-            let element_2 = *elements_ptr.add(1);
-            assert_eq!((*element_2).type_, COMPLEX);
-            assert_eq!(
-                (*element_2).elements,
-                (*(&raw const complex_double)).elements
-            );
-
-            #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-            {
-                let element_3 = *elements_ptr.add(2);
-                assert_eq!((*element_3).type_, COMPLEX);
+            // SAFETY: raw_complex_longdouble_clone should be a properly initialized `RawType`.
+            unsafe {
+                assert_eq!((*raw_complex_longdouble_clone.0).type_, COMPLEX);
                 assert_eq!(
-                    (*element_3).elements,
+                    (*raw_complex_longdouble_clone.0).elements,
                     (*(&raw const complex_longdouble)).elements
                 );
+            }
+
+            let raw_struct_elements = [
+                Type::ComplexFloat,
+                Type::ComplexDouble,
+                #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+                Type::ComplexLongDouble,
+            ];
+            let raw_struct = Type::structure(&raw_struct_elements).as_raw();
+            let raw_struct_clone = raw_struct.clone().clone();
+            drop(raw_struct);
+
+            // SAFETY: raw_struct should be a properly initialized `RawType` with 2 or 3 elements.
+            unsafe {
+                let elements_ptr = (*raw_struct_clone.0).elements;
+                let element_1 = *elements_ptr;
+                assert_eq!((*element_1).type_, COMPLEX);
+                assert_eq!(
+                    (*element_1).elements,
+                    (*(&raw const complex_float)).elements
+                );
+
+                let element_2 = *elements_ptr.add(1);
+                assert_eq!((*element_2).type_, COMPLEX);
+                assert_eq!(
+                    (*element_2).elements,
+                    (*(&raw const complex_double)).elements
+                );
+
+                #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+                {
+                    let element_3 = *elements_ptr.add(2);
+                    assert_eq!((*element_3).type_, COMPLEX);
+                    assert_eq!(
+                        (*element_3).elements,
+                        (*(&raw const complex_longdouble)).elements
+                    );
+                }
             }
         }
     }

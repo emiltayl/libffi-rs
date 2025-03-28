@@ -304,6 +304,7 @@ impl Type {
 
     /// Used by [`crate::middle::Cif`] to get a pointer to [`ffi_type`] that can be passed
     /// directly to libffi.
+    #[inline]
     pub(crate) fn as_raw(&self) -> RawType {
         match self {
             Type::I8 => RawType(&raw mut sint8),

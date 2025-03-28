@@ -5,7 +5,7 @@ extern crate alloc;
 
 use core::panic::PanicInfo;
 
-use libffi::middle::{Cif, CodePtr, Type, arg};
+use libffi::middle::{Arg, Cif, CodePtr, Type};
 
 #[global_allocator]
 static GLOBAL: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
@@ -78,7 +78,10 @@ pub extern "C" fn main() -> ! {
 
     unsafe {
         empty_cif.call::<()>(CodePtr(empty as *mut _), &[]);
-        let add_result: u32 = add_cif.call(CodePtr(add as *mut _), &[arg(&4u32), arg(&5u32)]);
+        let add_result: u32 = add_cif.call(
+            CodePtr(add as *mut _),
+            &[Arg::borrowed(&4u32), Arg::borrowed(&5u32)],
+        );
         assert_eq!(add_result, 9);
     }
 

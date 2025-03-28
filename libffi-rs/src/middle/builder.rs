@@ -23,7 +23,7 @@ use super::types::Type;
 /// Calling an `extern` function:
 ///
 /// ```
-/// use libffi::middle::{Builder, CodePtr, Type, arg, ffi_abi_FFI_DEFAULT_ABI};
+/// use libffi::middle::{Arg, Builder, CodePtr, Type, ffi_abi_FFI_DEFAULT_ABI};
 ///
 /// # #[unsafe(no_mangle)]
 /// # extern "C" fn foreign_mul(a: u64, b: u64) -> u64 { a * b }
@@ -41,7 +41,12 @@ use super::types::Type;
 ///     .into_cif();
 ///
 /// // SAFETY: `mul` only accepts literal values and performs a multiplication, returning a `u64`.
-/// let result: u64 = unsafe { cif.call(CodePtr(mul as *mut _), &[arg(&3u64), arg(&5u64)]) };
+/// let result: u64 = unsafe {
+///     cif.call(
+///         CodePtr(mul as *mut _),
+///         &[Arg::borrowed(&3u64), Arg::borrowed(&5u64)],
+///     )
+/// };
 ///
 /// assert_eq!(result, 3 * 5);
 /// ```

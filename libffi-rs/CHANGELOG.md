@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog] and this project adheres to
     been changed. See the documentation for updated definitions.
   * Deprecated many functions in `middle::Type`, preferring the usage of enum variants where
     possible, but it is still possible to use the old functions for backwards compatibility reasons.
-  * `middle::Arg` now has a lifetime to ensure that the arguments themselves do not outlive `Arg`.
+  * `middle::Arg` is now an enum that is either `Borrowed` or `Owned`. A lifetime has been
+    introduced to make sure that `Borrowed` arguments outlive `middle::Arg`.
+    + `middle::arg` has been removed.
   * Made `middle::Cif` and `middle::types::RawType` `Send` and `Sync`.
 - Removed libc dependency
 - Made crates no_std

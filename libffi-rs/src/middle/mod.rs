@@ -11,7 +11,7 @@
 extern crate alloc;
 #[cfg(not(test))]
 use alloc::boxed::Box;
-use core::{ffi::c_void, marker::PhantomData, ptr};
+use core::ffi::c_void;
 
 #[cfg(miri)]
 use miri::{call, prep_cif};
@@ -24,6 +24,9 @@ pub use crate::low::{
 #[cfg(not(miri))]
 use crate::low::{call, prep_cif};
 
+mod arg;
+pub use arg::{Arg, OwnedArg};
+
 mod closure;
 pub use closure::{Closure, ClosureOwned};
 
@@ -32,31 +35,6 @@ pub use types::Type;
 
 mod builder;
 pub use builder::Builder;
-
-/// Contains an untyped pointer to a function argument.
-///
-/// When calling a function via a [CIF](Cif), each argument must be passed as a C `void*`. Wrapping
-/// the argument in the [`Arg`] struct accomplishes the necessary coercion.
-#[derive(Clone, Debug)]
-#[repr(C)]
-pub struct Arg<'arg>(*mut c_void, PhantomData<&'arg c_void>);
-
-impl Arg<'_> {
-    /// Coerces an argument reference into the [`Arg`] type.
-    ///
-    /// This is used to wrap each argument pointer before passing them to [`Cif::call`].
-    pub fn new<T>(r: &T) -> Self {
-        Arg(ptr::from_ref(r) as *mut c_void, PhantomData)
-    }
-}
-
-/// Coerces an argument reference into the [`Arg`] type.
-///
-/// This is used to wrap each argument pointer before passing them to [`Cif::call`]. (This is the
-/// same as [`Arg::new`]).
-pub fn arg<T>(r: &T) -> Arg {
-    Arg::new(r)
-}
 
 /// Describes the calling convention and types for calling a function.
 ///
@@ -74,12 +52,17 @@ pub fn arg<T>(r: &T) -> Arg {
 ///     x + y
 /// }
 ///
-/// use libffi::middle::{Cif, CodePtr, Type, arg};
+/// use libffi::middle::{Arg, Cif, CodePtr, Type};
 ///
 /// let args = [Type::U64, Type::Pointer];
 /// let cif = Cif::new(&args, Some(Type::U64));
 ///
-/// let n: u64 = unsafe { cif.call(CodePtr(add as *mut _), &[arg(&5u64), arg(&&6u64)]) };
+/// let n: u64 = unsafe {
+///     cif.call(
+///         CodePtr(add as *mut _),
+///         &[Arg::borrowed(&5u64), Arg::borrowed(&&6u64)],
+///     )
+/// };
 /// assert_eq!(11, n);
 /// ```
 ///
@@ -104,6 +87,7 @@ impl Cif {
     /// # Panics
     ///
     /// See [`Cif::new_with_abi`] for possible panic scenarios.
+    #[inline]
     pub fn new(args: &[Type], result: Option<Type>) -> Self {
         Self::new_with_abi(args, result, ffi_abi_FFI_DEFAULT_ABI)
     }
@@ -115,6 +99,7 @@ impl Cif {
     ///
     /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
     /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
+    #[inline]
     pub fn new_with_abi(args: &[Type], result: Option<Type>, abi: FfiAbi) -> Self {
         let n_args = args.len();
 
@@ -159,6 +144,7 @@ impl Cif {
     ///
     /// This function will panic if `args` does not contain exactly as many arguments as defined in
     /// [`Cif::new`].
+    #[inline]
     pub unsafe fn call<R>(&self, fun: CodePtr, args: &[Arg]) -> R {
         // SAFETY: `self.cif` is a pointer to `low::ffi_cif` owned and managed by `self`.
         unsafe {
@@ -169,9 +155,11 @@ impl Cif {
             );
         }
 
+        let mut args: Box<[*mut c_void]> = args.iter().map(Arg::as_ptr).collect();
+
         // SAFETY: This is inherently unsafe and it is up to the caller of this function to uphold
         // all required safety guarantees.
-        unsafe { call::<R>(self.cif, fun, args.as_ptr().cast_mut().cast()) }
+        unsafe { call::<R>(self.cif, fun, args.as_mut_ptr().cast()) }
     }
 }
 
@@ -248,7 +236,12 @@ mod test {
         let f = |m: i64, n: i64| -> i64 {
             // SAFETY: the cif is properly defined and `add_it`` does not perform any unsafe
             // actions.
-            unsafe { cif.call(CodePtr(add_it as *mut c_void), &[arg(&m), arg(&n)]) }
+            unsafe {
+                cif.call(
+                    CodePtr(add_it as *mut c_void),
+                    &[Arg::borrowed(&m), Arg::borrowed(&n)],
+                )
+            }
         };
 
         assert_eq!(12, f(5, 7));
@@ -319,13 +312,16 @@ mod test {
     fn cif_call_panics_on_invalid_number_of_arguments() {
         let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64));
         // SAFETY: This should panic before any potential unsafe action happens.
-        let _result: i64 = unsafe { cif.call(CodePtr(add_it as *mut c_void), &[arg(&0u64)]) };
+        let _result: i64 =
+            unsafe { cif.call(CodePtr(add_it as *mut c_void), &[Arg::borrowed(&0u64)]) };
     }
 }
 
 /// Tests to ensure that memory management for `middle` structs is correct.
 #[cfg(test)]
 mod miritest {
+    use core::ptr;
+
     use super::*;
 
     extern "C" fn dummy_function(
@@ -365,14 +361,14 @@ mod miritest {
         drop(cif);
 
         let arguments = [
-            arg(&1i8),
-            arg(&2u16),
-            arg(&3i32),
-            arg(&4u64),
-            arg(&ptr::null::<c_void>()),
-            arg(&6f32),
-            arg(&7f64),
-            arg(&8u8),
+            Arg::borrowed(&1i8),
+            Arg::borrowed(&2u16),
+            Arg::borrowed(&3i32),
+            Arg::borrowed(&4u64),
+            Arg::borrowed(&ptr::null::<c_void>()),
+            Arg::borrowed(&6f32),
+            Arg::borrowed(&7f64),
+            Arg::borrowed(&8u8),
         ];
 
         // SAFETY: [`Cif::call`] is called with the correct number of arguments with (mostly) the

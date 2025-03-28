@@ -5,7 +5,7 @@ use std::{ffi::CString, ptr};
 use call_c_fn_varargs_fn::{ascii_to_upper, call_do_panic, vararg_sum};
 use libffi::{
     low::{call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif_var, types},
-    middle::{Cif, CodePtr, Type, arg},
+    middle::{Arg, Cif, CodePtr, Type},
 };
 
 /// Demonstrating calling the vararg `vararg_sum` function.
@@ -64,7 +64,7 @@ fn call_ascii_to_upper() {
     unsafe {
         ascii_to_upper_cif.call::<()>(
             CodePtr(ascii_to_upper as *mut _),
-            &[arg(&lowercase_string_ptr)],
+            &[Arg::borrowed(&lowercase_string_ptr)],
         );
     }
     // SAFETY: `lowercase_string_ptr` was created by `CString` and is still NULL-terminated.

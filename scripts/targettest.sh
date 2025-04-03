@@ -149,13 +149,24 @@ for target in ${TARGETS[@]}; do
             fi
 
             run_command_noexit cargo "+${toolchain}" test --target ${target} --workspace --verbose -- --color=always
-            run_command_noexit cargo "+${toolchain}" run --target ${target} --example call_c_fn 
-            run_command_noexit cargo "+${toolchain}" run --target ${target} --example qsort
-            if [ $? -eq 0 ]; then
-                passed=1
-            else
+            if [ $? -ne 0 ]; then
                 n=$((n+1))
+                continue
             fi
+
+            run_command_noexit cargo "+${toolchain}" run --target ${target} --example call_c_fn 
+            if [ $? -ne 0 ]; then
+                n=$((n+1))
+                continue
+            fi
+
+            run_command_noexit cargo "+${toolchain}" run --target ${target} --example qsort
+            if [ $? -ne 0 ]; then
+                n=$((n+1))
+                continue
+            fi
+
+            passed=1
         done
 
         if [ $passed -ne 1 ]; then

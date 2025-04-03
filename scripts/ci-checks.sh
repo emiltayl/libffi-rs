@@ -109,12 +109,15 @@ groupend
 groupstart "Run examples"
 
 run_command cargo +1.85.0 run --example call_c_fn --verbose
+run_command cargo +1.85.0 run --example qsort --verbose
 run_command cargo +1.85.0 run --manifest-path=examples/no_std_run/Cargo.toml --verbose
 
 run_command cargo +stable run --example call_c_fn --verbose
+run_command cargo +stable run --example qsort --verbose
 run_command cargo +stable run --manifest-path=examples/no_std_run/Cargo.toml --verbose
 
 run_command cargo +nightly run --example call_c_fn --verbose
+run_command cargo +nightly run --example qsort --verbose
 run_command cargo +nightly run --manifest-path=examples/no_std_run/Cargo.toml --verbose
 
 groupend

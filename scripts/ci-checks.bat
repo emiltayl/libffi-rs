@@ -50,10 +50,15 @@ cargo +nightly miri test --workspace --lib --verbose || goto failed
 @call :groupstart "Run examples"
 
 cargo +1.85.0 run --example call_c_fn --verbose || goto failed
-cargo +stable run --example call_c_fn --verbose || goto failed
-cargo +nightly run --example call_c_fn --verbose || goto failed
+cargo +1.85.0 run --example qsort --verbose || goto failed
 cargo +1.85.0 run --manifest-path=examples/no_std_run/Cargo.toml --verbose || goto failed
+
+cargo +stable run --example call_c_fn --verbose || goto failed
+cargo +stable run --example qsort --verbose || goto failed
 cargo +stable run --manifest-path=examples/no_std_run/Cargo.toml --verbose || goto failed
+
+cargo +nightly run --example call_c_fn --verbose || goto failed
+cargo +nightly run --example qsort --verbose || goto failed
 cargo +nightly run --manifest-path=examples/no_std_run/Cargo.toml --verbose || goto failed
 
 @call :groupend

@@ -96,7 +96,7 @@ impl<'closure> Closure<'closure> {
 
         assert!(!alloc.is_null(), "closure_alloc: returned null");
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
         unsafe {
             prep_closure(alloc, cif.cif, callback, ptr::from_ref(userdata), code).unwrap();
@@ -139,7 +139,7 @@ impl<'closure> Closure<'closure> {
 
         assert!(!alloc.is_null(), "closure_alloc: returned null");
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
         unsafe {
             prep_closure_unwindable(alloc, cif.cif, callback, ptr::from_ref(userdata), code)
@@ -178,7 +178,7 @@ impl<'closure> Closure<'closure> {
 
         assert!(!alloc.is_null(), "closure_alloc: returned null");
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
         unsafe {
             prep_closure_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code).unwrap();
@@ -221,7 +221,7 @@ impl<'closure> Closure<'closure> {
 
         assert!(!alloc.is_null(), "closure_alloc: returned null");
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
         unsafe {
             prep_closure_unwindable_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code)
@@ -274,12 +274,9 @@ impl Drop for Closure<'_> {
 /// This works similar to [`Closure`], except that [`ClosureOwned`] owns its own `userdata` which
 /// will be dropped when [`ClosureOwned`] is dropped.
 #[derive(Debug)]
-pub struct ClosureOwned<U>
-where
-    U: 'static,
-{
+pub struct ClosureOwned<U> {
     alloc: *mut ffi_closure,
-    code: CodePtr,
+    pub(crate) code: CodePtr,
     _cif: Cif,
     userdata: *mut U,
 }
@@ -327,7 +324,7 @@ impl<U> ClosureOwned<U> {
 
         let userdata = Box::into_raw(Box::new(userdata));
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
             prep_closure(alloc, cif.cif, callback, userdata, code).unwrap();
@@ -368,7 +365,7 @@ impl<U> ClosureOwned<U> {
 
         let userdata = Box::into_raw(Box::new(userdata));
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
             prep_closure_unwindable(alloc, cif.cif, callback, userdata, code).unwrap();
@@ -408,7 +405,7 @@ impl<U> ClosureOwned<U> {
 
         let userdata = Box::into_raw(Box::new(userdata));
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
             prep_closure_mut(alloc, cif.cif, callback, userdata, code).unwrap();
@@ -453,7 +450,7 @@ impl<U> ClosureOwned<U> {
 
         let userdata = Box::into_raw(Box::new(userdata));
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
             prep_closure_unwindable_mut(alloc, cif.cif, callback, userdata, code).unwrap();

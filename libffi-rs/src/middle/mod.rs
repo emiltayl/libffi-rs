@@ -113,7 +113,7 @@ impl Cif {
 
         let cif = Box::into_raw(Box::new(ffi_cif::default()));
 
-        // Safety: `Type` should ensure that no input to this function can cause safety issues in
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_cif` call.
         unsafe {
             prep_cif(

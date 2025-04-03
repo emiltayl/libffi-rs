@@ -34,6 +34,10 @@ The format is based on [Keep a Changelog] and this project adheres to
 - Fixed a bug where small return types could lead to out-of-bounds writes in `low::call`.
 - Added unwindable variants for closures, that is closures that can unwind the stack if they panic.
 - Closures now receive a `&mut MaybeUninit<R>` instead of `&mut R` for results.
+- New `high` module.
+  * `high::ForeignFunc` for calling ffi functions with a signature known at compile-time.
+  * `high::Closure` for wrapping Rust closures and returning a callable function pointer that will
+    execute the closure.
 
 ## [3.2.0] - 2023-03-28
 

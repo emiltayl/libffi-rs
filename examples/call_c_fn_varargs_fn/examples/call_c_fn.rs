@@ -1,4 +1,4 @@
-//! Sample binary that loads functions implemented in C.
+//! Example binary that loads functions implemented in C.
 
 use std::{ffi::CString, ptr};
 

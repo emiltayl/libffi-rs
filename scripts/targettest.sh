@@ -109,10 +109,24 @@ export "CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER=$CC"
 groupstart "Testing i686-unknown-linux-gnu"
 for toolchain in ${TOOLCHAINS[@]}; do
 
+    this_failed=0
+
     run_command_noexit cargo "+${toolchain}" test --target i686-unknown-linux-gnu --workspace --verbose -- --color=always
+    if [ $? -ne 0 ]; then
+        this_failed=$((this_failed+1))
+    fi
+
     run_command_noexit cargo "+${toolchain}" run --target i686-unknown-linux-gnu --example call_c_fn 
+    if [ $? -ne 0 ]; then
+        this_failed=$((this_failed+1))
+    fi
+
     run_command_noexit cargo "+${toolchain}" run --target i686-unknown-linux-gnu --example qsort
     if [ $? -ne 0 ]; then
+        this_failed=$((this_failed+1))
+    fi
+
+    if [ $this_failed -ne 0 ]; then
         FAILED="${FAILED} ${toolchain}-i686-unknown-linux-gnu"
         if [ -z ${CI+x} ]; then
             echo "Test failed"

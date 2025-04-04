@@ -1,6 +1,6 @@
 //! Example binary that calls `qsort` with a Rust closure as the comparator.
 
-use libffi::high::Closurable;
+use libffi::high::Closure;
 
 unsafe extern "C" {
     fn qsort(
@@ -14,7 +14,7 @@ unsafe extern "C" {
 fn main() {
     let mut array: [i32; 10] = [i32::MAX, 3, 7, 1000, 5, 0, 9, 13, 2, i32::MIN];
 
-    let closure = |a: *const i32, b: *const i32| -> i32 {
+    let closure = Closure::new(|a: *const i32, b: *const i32| -> i32 {
         // SAFETY: This assumes that qsort is called with an array with a correct number of `i32`s.
         let order = unsafe { (*a).cmp(&*b) };
 
@@ -23,8 +23,7 @@ fn main() {
             std::cmp::Ordering::Equal => 0,
             std::cmp::Ordering::Greater => 1,
         }
-    }
-    .to_ffi_closure();
+    });
 
     // SAFETY:
     // * `array` is a valid, mut array with 10 elements of size `size_of::<i32>()`

@@ -4,12 +4,18 @@ use alloc::boxed::Box;
 use core::{marker::PhantomData, ptr};
 
 #[cfg(miri)]
-use miri::{closure_alloc, closure_free, prep_closure, prep_closure_mut};
+use miri::{
+    closure_alloc, closure_free, prep_closure, prep_closure_mut, prep_closure_unwindable,
+    prep_closure_unwindable_mut,
+};
 
 #[cfg(not(miri))]
-use crate::low::{closure_alloc, closure_free, prep_closure, prep_closure_mut};
+use crate::low::{
+    closure_alloc, closure_free, prep_closure, prep_closure_mut, prep_closure_unwindable,
+    prep_closure_unwindable_mut,
+};
 use crate::{
-    low::{ffi_closure, prep_closure_unwindable, prep_closure_unwindable_mut},
+    low::ffi_closure,
     middle::{Callback, CallbackMut, CallbackUnwindable, CallbackUnwindableMut, Cif, CodePtr},
 };
 
@@ -40,7 +46,7 @@ use crate::{
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
-///     result: &mut mem::MaybeUninit<u64>,
+///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &F,
 /// ) {
@@ -48,7 +54,7 @@ use crate::{
 ///     unsafe {
 ///         let arg_1 = **args.offset(0);
 ///         let arg_2 = **args.offset(1);
-///         result.write(userdata(arg_1, arg_2));
+///         (*result).write(userdata(arg_1, arg_2));
 ///     }
 /// }
 ///
@@ -275,7 +281,7 @@ impl Drop for Closure<'_> {
 /// will be dropped when [`ClosureOwned`] is dropped.
 #[derive(Debug)]
 pub struct ClosureOwned<U> {
-    alloc: *mut ffi_closure,
+    pub(crate) alloc: *mut ffi_closure,
     pub(crate) code: CodePtr,
     _cif: Cif,
     userdata: *mut U,
@@ -510,7 +516,7 @@ mod test {
 
     unsafe extern "C" fn callback(
         _cif: &ffi_cif,
-        result: &mut MaybeUninit<u64>,
+        result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
         userdata: &u64,
     ) {
@@ -518,7 +524,9 @@ mod test {
         // SAFETY: `callback` receives a pointer to an array with pointers to the provided
         // arguments. This derefs a the pointer to the first argument, which should be a pointer to
         // a u64.
-        result.write(unsafe { **args } + *userdata);
+        unsafe {
+            (*result).write(**args + *userdata);
+        }
     }
 
     #[test]
@@ -535,7 +543,7 @@ mod test {
 
     unsafe extern "C" fn callback2<F: Fn(u64, u64) -> u64>(
         _cif: &ffi_cif,
-        result: &mut MaybeUninit<u64>,
+        result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
         userdata: &F,
     ) {
@@ -550,7 +558,10 @@ mod test {
         // a u64.
         let second_arg = unsafe { **args.offset(1) };
 
-        result.write(userdata(first_arg, second_arg));
+        // SAFETY: result points to a `MaybeUninit<u64>` in `rust_lambda`.
+        unsafe {
+            (*result).write(userdata(first_arg, second_arg));
+        }
     }
 
     #[test]
@@ -597,7 +608,7 @@ mod test {
 
     extern "C-unwind" fn do_panic(
         _cif: &ffi_cif,
-        _result: &mut MaybeUninit<()>,
+        _result: *mut MaybeUninit<()>,
         _args: *const *const c_void,
         _userdata: &(),
     ) {
@@ -606,7 +617,7 @@ mod test {
 
     extern "C-unwind" fn do_panic_mut(
         _cif: &ffi_cif,
-        _result: &mut MaybeUninit<()>,
+        _result: *mut MaybeUninit<()>,
         _args: *const *const c_void,
         _userdata: &mut (),
     ) {
@@ -624,7 +635,7 @@ mod miritest {
 
     unsafe extern "C" fn dummy_callback(
         _cif: &ffi_cif,
-        _result: &mut MaybeUninit<u32>,
+        _result: *mut MaybeUninit<u32>,
         _args: *const *const c_void,
         _userdata: &u32,
     ) {
@@ -677,6 +688,24 @@ mod miri {
         Ok(())
     }
 
+    pub(super) unsafe fn prep_closure_unwindable<U, R>(
+        closure: *mut ffi_closure,
+        cif: *mut ffi_cif,
+        callback: CallbackUnwindable<U, R>,
+        userdata: *const U,
+        _code: CodePtr,
+    ) -> Result<()> {
+        // SAFETY: This function assumes all pointers are valid.
+        unsafe {
+            (*closure).cif = cif;
+            (*closure).fun =
+                Some(core::mem::transmute::<CallbackUnwindable<U, R>, RawCallback>(callback));
+            (*closure).user_data = userdata.cast_mut().cast();
+        }
+
+        Ok(())
+    }
+
     pub(super) unsafe fn prep_closure_mut<U, R>(
         closure: *mut ffi_closure,
         cif: *mut ffi_cif,
@@ -690,6 +719,26 @@ mod miri {
             (*closure).fun = Some(core::mem::transmute::<CallbackMut<U, R>, RawCallback>(
                 callback,
             ));
+            (*closure).user_data = userdata.cast();
+        }
+
+        Ok(())
+    }
+
+    pub(super) unsafe fn prep_closure_unwindable_mut<U, R>(
+        closure: *mut ffi_closure,
+        cif: *mut ffi_cif,
+        callback: CallbackUnwindableMut<U, R>,
+        userdata: *mut U,
+        _code: CodePtr,
+    ) -> Result<()> {
+        // SAFETY: This function assumes all pointers are valid.
+        unsafe {
+            (*closure).cif = cif;
+            (*closure).fun = Some(core::mem::transmute::<
+                CallbackUnwindableMut<U, R>,
+                RawCallback,
+            >(callback));
             (*closure).user_data = userdata.cast();
         }
 

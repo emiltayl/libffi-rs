@@ -562,7 +562,7 @@ pub unsafe fn closure_free(closure: *mut ffi_closure) {
 /// `void*`.
 pub type Callback<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
-    result: &mut MaybeUninit<R>,
+    result: *mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &U,
 );
@@ -574,7 +574,7 @@ pub type Callback<U, R> = unsafe extern "C" fn(
 /// `void*`.
 pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
-    result: &mut MaybeUninit<R>,
+    result: *mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &U,
 );
@@ -586,7 +586,7 @@ pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
 /// `void*`.
 pub type CallbackMut<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
-    result: &mut MaybeUninit<R>,
+    result: *mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &mut U,
 );
@@ -598,7 +598,7 @@ pub type CallbackMut<U, R> = unsafe extern "C" fn(
 /// `void*`.
 pub type CallbackUnwindableMut<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
-    result: &mut MaybeUninit<R>,
+    result: *mut MaybeUninit<R>,
     args: *const *const c_void,
     userdata: &mut U,
 );
@@ -654,13 +654,13 @@ pub type RawCallback = unsafe extern "C" fn(
 ///
 /// unsafe extern "C" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut mem::MaybeUninit<u64>,
+///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &u64,
 /// ) {
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
-///         result.write(**args + *userdata);
+///         (*result).write(**args + *userdata);
 ///     }
 /// }
 ///
@@ -753,7 +753,7 @@ pub unsafe fn prep_closure<U, R>(
 ///
 /// unsafe extern "C-unwind" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut mem::MaybeUninit<()>,
+///     result: *mut mem::MaybeUninit<()>,
 ///     args: *const *const c_void,
 ///     userdata: &(),
 /// ) {
@@ -852,13 +852,13 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///
 /// unsafe extern "C" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut mem::MaybeUninit<u64>,
+///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &mut u64,
 /// ) {
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
-///         result.write(*userdata);
+///         (*result).write(*userdata);
 ///         *userdata += **args;
 ///     }
 /// }
@@ -952,7 +952,7 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///
 /// unsafe extern "C-unwind" fn callback(
 ///     _cif: &ffi_cif,
-///     result: &mut mem::MaybeUninit<()>,
+///     result: *mut mem::MaybeUninit<()>,
 ///     args: *const *const c_void,
 ///     userdata: &mut u64,
 /// ) {

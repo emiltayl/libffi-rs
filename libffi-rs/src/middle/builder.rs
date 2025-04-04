@@ -63,7 +63,7 @@ use super::types::Type;
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
-///     result: &mut mem::MaybeUninit<u64>,
+///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
 ///     userdata: &F,
 /// ) {
@@ -74,7 +74,7 @@ use super::types::Type;
 ///         let arg_1 = **args.offset(0);
 ///         let arg_2 = **args.offset(1);
 ///
-///         result.write(userdata(arg_1, arg_2));
+///         (*result).write(userdata(arg_1, arg_2));
 ///     }
 /// }
 ///
@@ -243,7 +243,7 @@ mod test {
 
     unsafe extern "C" fn ref_lambda_callback<F: Fn(u64, u64) -> u64>(
         _cif: &ffi_cif,
-        result: &mut MaybeUninit<u64>,
+        result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
         userdata: &F,
     ) {
@@ -254,13 +254,13 @@ mod test {
             let arg_1 = **args.offset(0);
             let arg_2 = **args.offset(1);
 
-            result.write(userdata(arg_1, arg_2));
+            (*result).write(userdata(arg_1, arg_2));
         }
     }
 
     unsafe extern "C" fn mut_ref_lambda_callback<F: Fn(u64, u64) -> u64>(
         _cif: &ffi_cif,
-        result: &mut MaybeUninit<u64>,
+        result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
         userdata: &mut F,
     ) {
@@ -271,7 +271,7 @@ mod test {
             let arg_1 = **args.offset(0);
             let arg_2 = **args.offset(1);
 
-            result.write(userdata(arg_1, arg_2));
+            (*result).write(userdata(arg_1, arg_2));
         }
     }
 

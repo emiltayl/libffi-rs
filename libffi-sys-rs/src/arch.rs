@@ -110,6 +110,11 @@ mod arm {
     pub const ffi_abi_FFI_SYSV: ffi_abi = 1;
     pub const ffi_abi_FFI_VFP: ffi_abi = 2;
     pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 3;
+
+    // On systems with a hard(ware) float ("hf"), ffi_abi_FFI_VPF is the default ABI.
+    #[cfg(target_abi = "eabihf")]
+    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_VPF;
+    #[cfg(not(target_abi = "eabihf"))]
     pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV;
 
     // See: <https://github.com/libffi/libffi/blob/db5706ff285c476aa3c0f811ff2b188319ac3ebe/src/arm/ffitarget.h#L84>

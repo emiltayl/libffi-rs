@@ -113,7 +113,7 @@ mod arm {
 
     // On systems with a hard(ware) float ("hf"), ffi_abi_FFI_VPF is the default ABI.
     #[cfg(target_abi = "eabihf")]
-    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_VPF;
+    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_VFP;
     #[cfg(not(target_abi = "eabihf"))]
     pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV;
 

@@ -67,6 +67,7 @@ pub unsafe trait AsFfiType: Copy {
 
 // SAFETY: `i8` has the same layout as libffi's sint8.
 unsafe impl AsFfiType for i8 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::I8
     }
@@ -74,6 +75,7 @@ unsafe impl AsFfiType for i8 {
 
 // SAFETY: `u8` has the same layout as libffi's uint8.
 unsafe impl AsFfiType for u8 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::U8
     }
@@ -81,6 +83,7 @@ unsafe impl AsFfiType for u8 {
 
 // SAFETY: `i16` has the same layout as libffi's sint16.
 unsafe impl AsFfiType for i16 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::I16
     }
@@ -88,6 +91,7 @@ unsafe impl AsFfiType for i16 {
 
 // SAFETY: `u16` has the same layout as libffi's uint16.
 unsafe impl AsFfiType for u16 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::U16
     }
@@ -95,6 +99,7 @@ unsafe impl AsFfiType for u16 {
 
 // SAFETY: `i32` has the same layout as libffi's sint32.
 unsafe impl AsFfiType for i32 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::I32
     }
@@ -102,6 +107,7 @@ unsafe impl AsFfiType for i32 {
 
 // SAFETY: `u32` has the same layout as libffi's uint32.
 unsafe impl AsFfiType for u32 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::U32
     }
@@ -109,6 +115,7 @@ unsafe impl AsFfiType for u32 {
 
 // SAFETY: `i64` has the same layout as libffi's sint64.
 unsafe impl AsFfiType for i64 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::I64
     }
@@ -116,6 +123,7 @@ unsafe impl AsFfiType for i64 {
 
 // SAFETY: `u64` has the same layout as libffi's uint64.
 unsafe impl AsFfiType for u64 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::U64
     }
@@ -123,6 +131,7 @@ unsafe impl AsFfiType for u64 {
 
 // SAFETY: `isize` is converted to an `i(16|32|64)` as needed based on `target_pointer_width`.
 unsafe impl AsFfiType for isize {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::Isize
     }
@@ -130,6 +139,7 @@ unsafe impl AsFfiType for isize {
 
 // SAFETY: `usize` is converted to an `u(16|32|64)` as needed based on `target_pointer_width`.
 unsafe impl AsFfiType for usize {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::Usize
     }
@@ -137,6 +147,7 @@ unsafe impl AsFfiType for usize {
 
 // SAFETY: `f32` has the same layout as libffi's float.
 unsafe impl AsFfiType for f32 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::F32
     }
@@ -144,6 +155,7 @@ unsafe impl AsFfiType for f32 {
 
 // SAFETY: `f64` has the same layout as libffi's double.
 unsafe impl AsFfiType for f64 {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::F64
     }
@@ -151,6 +163,7 @@ unsafe impl AsFfiType for f64 {
 
 // SAFETY: *const T denotes a pointer.
 unsafe impl<T> AsFfiType for *const T {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::Pointer
     }
@@ -158,6 +171,7 @@ unsafe impl<T> AsFfiType for *const T {
 
 // SAFETY: *mut T denotes a pointer.
 unsafe impl<T> AsFfiType for *mut T {
+    #[inline]
     fn as_ffi_type() -> Type {
         Type::Pointer
     }
@@ -328,6 +342,7 @@ impl private::FfiRetSuper for () {}
 
 // SAFETY: () signifies no return value.
 unsafe impl FfiRet for () {
+    #[inline]
     fn as_ffi_return_type() -> Option<Type> {
         None
     }
@@ -340,6 +355,7 @@ unsafe impl<T> FfiRet for T
 where
     T: AsFfiType,
 {
+    #[inline]
     fn as_ffi_return_type() -> Option<Type> {
         Some(<T as AsFfiType>::as_ffi_type())
     }

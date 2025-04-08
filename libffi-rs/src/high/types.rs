@@ -23,10 +23,8 @@ use crate::middle::{Arg, Type};
 /// Implementing `AsFfiType` for a `#[repr(C)]` struct.
 ///
 /// ```
-/// use libffi::{
-///     high::{AsFfiType, CodePtr, ForeignFunc},
-///     middle::Type,
-/// };
+/// use libffi::high::{AsFfiType, CodePtr, ForeignFunc};
+/// use libffi::middle::Type;
 ///
 /// // The struct must be `Copy` to implement `AsFfiType`.
 /// #[repr(C)]

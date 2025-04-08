@@ -1,7 +1,5 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::common::{env, fs, run_command};
 

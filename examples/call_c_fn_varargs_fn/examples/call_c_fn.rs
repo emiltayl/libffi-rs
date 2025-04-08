@@ -1,12 +1,11 @@
 //! Example binary that loads functions implemented in C.
 
-use std::{ffi::CString, ptr};
+use std::ffi::CString;
+use std::ptr;
 
 use call_c_fn_varargs_fn::{ascii_to_upper, call_do_panic, vararg_sum};
-use libffi::{
-    low::{call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif_var, types},
-    middle::{Arg, Cif, CodePtr, Type},
-};
+use libffi::low::{call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif_var, types};
+use libffi::middle::{Arg, Cif, CodePtr, Type};
 
 /// Demonstrating calling the vararg `vararg_sum` function.
 fn call_vararg_sum() {

@@ -1,14 +1,10 @@
-use core::{
-    any::TypeId,
-    ffi::c_void,
-    mem::MaybeUninit,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use core::any::TypeId;
+use core::ffi::c_void;
+use core::mem::MaybeUninit;
+use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::{
-    high::{AsFfiType, FfiArgs, FfiRet},
-    low::ffi_cif,
-};
+use crate::high::{AsFfiType, FfiArgs, FfiRet};
+use crate::low::ffi_cif;
 
 mod private {
     pub trait ClosurableSuper<ARGS, RET, FN> {}

@@ -1,4 +1,6 @@
-use core::{ffi::c_void, marker::PhantomData, ptr};
+use core::ffi::c_void;
+use core::marker::PhantomData;
+use core::ptr;
 
 /// Contains an untyped pointer to a function argument.
 ///

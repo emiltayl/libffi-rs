@@ -49,11 +49,9 @@
     reason = "Documenting libffi's types and constants is currently not a priority."
 )]
 
-use core::{
-    ffi::{c_char, c_int, c_long, c_schar, c_uint, c_ulong, c_ushort, c_void},
-    fmt::{self, Debug},
-    mem::zeroed,
-};
+use core::ffi::{c_char, c_int, c_long, c_schar, c_uint, c_ulong, c_ushort, c_void};
+use core::fmt::{self, Debug};
+use core::mem::zeroed;
 
 mod arch;
 pub use arch::*;

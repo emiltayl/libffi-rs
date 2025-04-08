@@ -1,12 +1,8 @@
 use core::marker::PhantomData;
 
-use crate::{
-    high::{
-        CodePtr,
-        types::{FfiArgs, FfiRet},
-    },
-    middle::{Cif, FfiAbi, ffi_abi_FFI_DEFAULT_ABI},
-};
+use crate::high::CodePtr;
+use crate::high::types::{FfiArgs, FfiRet};
+use crate::middle::{Cif, FfiAbi, ffi_abi_FFI_DEFAULT_ABI};
 
 /// Wrapper around a FFI function where the signature of the function is known at compile-time. This
 /// can for example be used to load plugin functionality from .dll/.so files that are loaded at

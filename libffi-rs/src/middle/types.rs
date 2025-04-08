@@ -842,12 +842,10 @@ mod test {
     reason = "Copying names from `crate::low::types`"
 )]
 mod miri {
-    use crate::low::{
-        ffi_type,
-        type_tag::{
-            COMPLEX, DOUBLE, FLOAT, LONGDOUBLE, POINTER, SINT8, SINT16, SINT32, SINT64, UINT8,
-            UINT16, UINT32, UINT64, VOID,
-        },
+    use crate::low::ffi_type;
+    use crate::low::type_tag::{
+        COMPLEX, DOUBLE, FLOAT, LONGDOUBLE, POINTER, SINT8, SINT16, SINT32, SINT64, UINT8, UINT16,
+        UINT32, UINT64, VOID,
     };
 
     // Redefining static muts so this module can be tested with miri

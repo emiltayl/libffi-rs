@@ -6,10 +6,8 @@
 //! [`raw`], I’ve avoided drastic renaming in favor of hewing close to the libffi API.
 //! See [`middle`](crate::middle) for an easier-to-use approach.
 
-use core::{
-    ffi::{c_uint, c_void},
-    mem::{MaybeUninit, transmute},
-};
+use core::ffi::{c_uint, c_void};
+use core::mem::{MaybeUninit, transmute};
 
 use crate::raw;
 
@@ -382,7 +380,8 @@ pub unsafe fn prep_cif_var(
 /// # Examples
 ///
 /// ```
-/// use std::{ffi::c_void, ptr};
+/// use std::ffi::c_void;
+/// use std::ptr;
 ///
 /// use libffi::low::{CodePtr, call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif, types};
 ///
@@ -645,7 +644,8 @@ pub type RawCallback = unsafe extern "C" fn(
 /// # Examples
 ///
 /// ```
-/// use std::{mem, os::raw::c_void};
+/// use std::mem;
+/// use std::os::raw::c_void;
 ///
 /// use libffi::low::{
 ///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
@@ -744,7 +744,8 @@ pub unsafe fn prep_closure<U, R>(
 /// Allocating a closure that will panic and catching it with [`std::panic::catch_unwind`].
 ///
 /// ```
-/// use std::{mem, os::raw::c_void, panic, ptr};
+/// use std::os::raw::c_void;
+/// use std::{mem, panic, ptr};
 ///
 /// use libffi::low::{
 ///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
@@ -843,7 +844,8 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 /// # Examples
 ///
 /// ```
-/// use std::{mem, os::raw::c_void};
+/// use std::mem;
+/// use std::os::raw::c_void;
 ///
 /// use libffi::low::{
 ///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
@@ -943,7 +945,8 @@ pub unsafe fn prep_closure_mut<U, R>(
 /// Allocating a closure that will panic and catching it with [`std::panic::catch_unwind`].
 ///
 /// ```
-/// use std::{mem, os::raw::c_void, panic, ptr};
+/// use std::os::raw::c_void;
+/// use std::{mem, panic, ptr};
 ///
 /// use libffi::low::{
 ///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,

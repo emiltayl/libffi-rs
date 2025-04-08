@@ -2,13 +2,12 @@ extern crate alloc;
 
 #[cfg(not(test))]
 use alloc::boxed::Box;
-use core::{marker::PhantomData, sync::atomic::AtomicBool};
+use core::marker::PhantomData;
+use core::sync::atomic::AtomicBool;
 
 use super::{Closurable, ClosureMutable};
-use crate::{
-    high::{FfiArgs, FfiRet},
-    middle::{Cif, ClosureOwned},
-};
+use crate::high::{FfiArgs, FfiRet};
+use crate::middle::{Cif, ClosureOwned};
 
 /// `Closure` accepts a Rust closure and creates a function pointer so that a function pointer to
 /// the closure can be sent across FFI boundaries.
@@ -215,11 +214,14 @@ where
 
 #[cfg(all(test, not(miri)))]
 mod test {
-    use core::{hint::spin_loop, sync::atomic::Ordering, time::Duration};
+    use core::hint::spin_loop;
+    use core::sync::atomic::Ordering;
+    use core::time::Duration;
     use std::time::Instant;
 
     use super::*;
-    use crate::{high::AsFfiType, middle::Type};
+    use crate::high::AsFfiType;
+    use crate::middle::Type;
 
     #[repr(C)]
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -545,10 +547,12 @@ mod test {
 
 #[cfg(all(test, miri))]
 mod miritest {
-    use core::{ffi::c_void, mem::MaybeUninit};
+    use core::ffi::c_void;
+    use core::mem::MaybeUninit;
 
     use super::*;
-    use crate::{high::AsFfiType, middle::Type};
+    use crate::high::AsFfiType;
+    use crate::middle::Type;
 
     #[repr(C)]
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]

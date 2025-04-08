@@ -1,7 +1,8 @@
 extern crate alloc;
 #[cfg(not(test))]
 use alloc::boxed::Box;
-use core::{marker::PhantomData, ptr};
+use core::marker::PhantomData;
+use core::ptr;
 
 #[cfg(miri)]
 use miri::{
@@ -9,14 +10,14 @@ use miri::{
     prep_closure_unwindable_mut,
 };
 
+use crate::low::ffi_closure;
 #[cfg(not(miri))]
 use crate::low::{
     closure_alloc, closure_free, prep_closure, prep_closure_mut, prep_closure_unwindable,
     prep_closure_unwindable_mut,
 };
-use crate::{
-    low::ffi_closure,
-    middle::{Callback, CallbackMut, CallbackUnwindable, CallbackUnwindableMut, Cif, CodePtr},
+use crate::middle::{
+    Callback, CallbackMut, CallbackUnwindable, CallbackUnwindableMut, Cif, CodePtr,
 };
 
 /// Represents a closure callable from C that borrows `userdata`.
@@ -37,12 +38,11 @@ use crate::{
 /// invokes it.
 ///
 /// ```
-/// use std::{mem, os::raw::c_void};
+/// use std::mem;
+/// use std::os::raw::c_void;
 ///
-/// use libffi::{
-///     low,
-///     middle::{Cif, Closure, Type},
-/// };
+/// use libffi::low;
+/// use libffi::middle::{Cif, Closure, Type};
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
@@ -496,10 +496,12 @@ impl<U> ClosureOwned<U> {
 
 #[cfg(all(test, not(miri)))]
 mod test {
-    use core::{ffi::c_void, mem::MaybeUninit};
+    use core::ffi::c_void;
+    use core::mem::MaybeUninit;
 
     use super::*;
-    use crate::{low::ffi_cif, middle::Type};
+    use crate::low::ffi_cif;
+    use crate::middle::Type;
 
     #[test]
     fn closure() {
@@ -628,7 +630,8 @@ mod test {
 /// Tests to ensure that the memory management for closures is correct.
 #[cfg(test)]
 mod miritest {
-    use core::{ffi::c_void, mem::MaybeUninit};
+    use core::ffi::c_void;
+    use core::mem::MaybeUninit;
 
     use super::*;
     use crate::low::ffi_cif;

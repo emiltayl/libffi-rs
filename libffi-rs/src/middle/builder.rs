@@ -54,12 +54,11 @@ use super::types::Type;
 /// Building and calling a closure:
 ///
 /// ```
-/// use std::{mem, os::raw::c_void};
+/// use std::mem;
+/// use std::os::raw::c_void;
 ///
-/// use libffi::{
-///     low,
-///     middle::{Builder, Type},
-/// };
+/// use libffi::low;
+/// use libffi::middle::{Builder, Type};
 ///
 /// unsafe extern "C" fn lambda_callback<F: Fn(u64, u64) -> u64>(
 ///     _cif: &low::ffi_cif,
@@ -236,7 +235,8 @@ impl Builder {
 
 #[cfg(all(test, not(miri)))]
 mod test {
-    use core::{ffi::c_void, mem::MaybeUninit};
+    use core::ffi::c_void;
+    use core::mem::MaybeUninit;
 
     use super::*;
     use crate::low::ffi_cif;

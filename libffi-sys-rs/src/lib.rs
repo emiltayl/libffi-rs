@@ -593,38 +593,54 @@ mod test {
     use super::*;
 
     extern "C" fn cast_u8_u32(x: u8) -> u32 {
-        x as u32
+        x.into()
     }
 
     #[test]
     fn test_function_sign_extension() {
-        unsafe {
-            let mut cif: ffi_cif = Default::default();
-            let mut arg_types: Vec<*mut ffi_type> = vec![&mut ffi_type_uint8];
+        let mut cif = ffi_cif::default();
+        let mut arg_types: [*mut ffi_type; 1] = [&raw mut ffi_type_uint8];
 
-            let prep_status = ffi_prep_cif(
-                &mut cif,
+        // SAFETY:
+        // * `cif` points to a `ffi_cif`
+        // * `arg_types` contains one `ffi_type` and `nargs` is 1
+        // * `rtype` points to a `ffi_type`
+        let prep_status = unsafe {
+            ffi_prep_cif(
+                &raw mut cif,
                 ffi_abi_FFI_DEFAULT_ABI,
                 1,
-                &mut ffi_type_uint32,
+                &raw mut ffi_type_uint32,
                 arg_types.as_mut_ptr(),
-            );
+            )
+        };
 
-            assert_eq!(prep_status, ffi_status_FFI_OK);
+        assert_eq!(prep_status, ffi_status_FFI_OK);
 
-            let mut rval = 0u32;
-            let func = &*(&(cast_u8_u32 as *mut extern "C" fn(u8) -> u32) as *const _
-                as *const extern "C" fn());
+        let mut rval = 0u32;
+        let arg: u32 = 256;
 
+        let func_ptr = cast_u8_u32 as *const c_void;
+        let func_ptr_ptr = (&raw const func_ptr).cast::<extern "C" fn()>();
+
+        // SAFETY:
+        // * `cif` points to a `ffi_cif` with one `u8` argument and `u32` return value using the
+        //   default ABI.
+        // * `func` points to a function with a signature as described in `cif`, one `u8` argument,
+        //   a `u32` return value and the default ABI.
+        // * `rval` is a mutable `u32`.
+        // * One `u16` argument is provided with the intent of verifying that only a `u8` is read,
+        //   discarding bits other than the 8 least significant.
+        unsafe {
             ffi_call(
                 &mut cif,
-                Some(*func),
-                &mut rval as *mut _ as *mut c_void,
-                vec![&mut 256 as *mut _ as *mut c_void].as_mut_ptr(),
+                Some(*func_ptr_ptr),
+                (&raw mut rval).cast(),
+                [(&raw const arg).cast_mut().cast()].as_mut_ptr(),
             );
-
-            assert_eq!(rval, 0);
         }
+
+        assert_eq!(rval, 0);
     }
 
     extern "C" fn add(x: u64, y: u64) -> u64 {

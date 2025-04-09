@@ -563,7 +563,7 @@ pub type Callback<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
     args: *const *const c_void,
-    userdata: &U,
+    userdata: *const U,
 );
 
 /// The type of function called by a closure that can unwind panics.
@@ -575,7 +575,7 @@ pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
     args: *const *const c_void,
-    userdata: &U,
+    userdata: *const U,
 );
 
 /// The type of function called by a mutable closure.
@@ -587,7 +587,7 @@ pub type CallbackMut<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
     args: *const *const c_void,
-    userdata: &mut U,
+    userdata: *mut U,
 );
 
 /// The type of function called by a mutable closure that can unwind panics.
@@ -599,7 +599,7 @@ pub type CallbackUnwindableMut<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
     args: *const *const c_void,
-    userdata: &mut U,
+    userdata: *mut U,
 );
 
 /// The callback type expected by [`raw::ffi_prep_closure_loc`].
@@ -656,7 +656,7 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     _cif: &ffi_cif,
 ///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
-///     userdata: &u64,
+///     userdata: *const u64,
 /// ) {
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
@@ -756,7 +756,7 @@ pub unsafe fn prep_closure<U, R>(
 ///     _cif: &ffi_cif,
 ///     result: *mut mem::MaybeUninit<()>,
 ///     args: *const *const c_void,
-///     userdata: &(),
+///     userdata: *const (),
 /// ) {
 ///     panic!("Panic from a libffi closure");
 /// }
@@ -856,7 +856,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///     _cif: &ffi_cif,
 ///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
-///     userdata: &mut u64,
+///     userdata: *mut u64,
 /// ) {
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
@@ -957,11 +957,13 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///     _cif: &ffi_cif,
 ///     result: *mut mem::MaybeUninit<()>,
 ///     args: *const *const c_void,
-///     userdata: &mut u64,
+///     userdata: *mut u64,
 /// ) {
-///     *userdata += 1;
-///     panic!("Panic from a libffi closure");
-///     *userdata += 1;
+///     unsafe {
+///         *userdata += 1;
+///         panic!("Panic from a libffi closure");
+///         *userdata += 1;
+///     }
 /// }
 ///
 /// unsafe {

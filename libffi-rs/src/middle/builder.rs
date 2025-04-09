@@ -64,7 +64,7 @@ use super::types::Type;
 ///     _cif: &low::ffi_cif,
 ///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
-///     userdata: &F,
+///     userdata: *const F,
 /// ) {
 ///     // SAFETY: Callers of this function needs to make sure that `args` is an array with two
 ///     // pointers to `u64`s.
@@ -73,7 +73,7 @@ use super::types::Type;
 ///         let arg_1 = **args.offset(0);
 ///         let arg_2 = **args.offset(1);
 ///
-///         (*result).write(userdata(arg_1, arg_2));
+///         (*result).write((*userdata)(arg_1, arg_2));
 ///     }
 /// }
 ///
@@ -245,7 +245,7 @@ mod test {
         _cif: &ffi_cif,
         result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
-        userdata: &F,
+        userdata: *const F,
     ) {
         // SAFETY: Callers of this function needs to make sure that `args` is an array with two
         // pointers to `u64`s.
@@ -254,7 +254,7 @@ mod test {
             let arg_1 = **args.offset(0);
             let arg_2 = **args.offset(1);
 
-            (*result).write(userdata(arg_1, arg_2));
+            (*result).write((*userdata)(arg_1, arg_2));
         }
     }
 
@@ -262,7 +262,7 @@ mod test {
         _cif: &ffi_cif,
         result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
-        userdata: &mut F,
+        userdata: *mut F,
     ) {
         // SAFETY: Callers of this function needs to make sure that `args` is an array with two
         // pointers to `u64`s.
@@ -271,7 +271,7 @@ mod test {
             let arg_1 = **args.offset(0);
             let arg_2 = **args.offset(1);
 
-            (*result).write(userdata(arg_1, arg_2));
+            (*result).write((*userdata)(arg_1, arg_2));
         }
     }
 

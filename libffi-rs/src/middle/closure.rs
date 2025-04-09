@@ -48,13 +48,13 @@ use crate::middle::{
 ///     _cif: &low::ffi_cif,
 ///     result: *mut mem::MaybeUninit<u64>,
 ///     args: *const *const c_void,
-///     userdata: &F,
+///     userdata: *const F,
 /// ) {
 ///     let args: *const *const u64 = args.cast();
 ///     unsafe {
 ///         let arg_1 = **args.offset(0);
 ///         let arg_2 = **args.offset(1);
-///         (*result).write(userdata(arg_1, arg_2));
+///         (*result).write((*userdata)(arg_1, arg_2));
 ///     }
 /// }
 ///
@@ -520,7 +520,7 @@ mod test {
         _cif: &ffi_cif,
         result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
-        userdata: &u64,
+        userdata: *const u64,
     ) {
         let args = args.cast::<*const u64>();
         // SAFETY: `callback` receives a pointer to an array with pointers to the provided
@@ -547,7 +547,7 @@ mod test {
         _cif: &ffi_cif,
         result: *mut MaybeUninit<u64>,
         args: *const *const c_void,
-        userdata: &F,
+        userdata: *const F,
     ) {
         let args = args.cast::<*const u64>();
 
@@ -562,7 +562,7 @@ mod test {
 
         // SAFETY: result points to a `MaybeUninit<u64>` in `rust_lambda`.
         unsafe {
-            (*result).write(userdata(first_arg, second_arg));
+            (*result).write((*userdata)(first_arg, second_arg));
         }
     }
 
@@ -612,7 +612,7 @@ mod test {
         _cif: &ffi_cif,
         _result: *mut MaybeUninit<()>,
         _args: *const *const c_void,
-        _userdata: &(),
+        _userdata: *const (),
     ) {
         panic!();
     }
@@ -621,7 +621,7 @@ mod test {
         _cif: &ffi_cif,
         _result: *mut MaybeUninit<()>,
         _args: *const *const c_void,
-        _userdata: &mut (),
+        _userdata: *mut (),
     ) {
         panic!();
     }
@@ -640,7 +640,7 @@ mod miritest {
         _cif: &ffi_cif,
         _result: *mut MaybeUninit<u32>,
         _args: *const *const c_void,
-        _userdata: &u32,
+        _userdata: *const u32,
     ) {
     }
 

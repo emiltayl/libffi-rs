@@ -90,7 +90,7 @@ where
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
-        closure: &FN,
+        closure: *const FN,
     );
 
     /// Closure handle function called by libffi, which in turn reads the provided arguments and
@@ -115,7 +115,7 @@ where
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
-        closure: &FN,
+        closure: *const FN,
     ) {
         // SAFETY: See this function's Safety section.
         unsafe {
@@ -145,7 +145,7 @@ where
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
-        closure: &FN,
+        closure: *const FN,
     ) {
         // SAFETY: See this function's Safety section.
         unsafe {
@@ -171,9 +171,12 @@ where
         _cif: &ffi_cif,
         _result_space: *mut MaybeUninit<()>,
         _args: *const *const c_void,
-        closure: &FN,
+        closure: *const FN,
     ) {
-        closure();
+        // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
+        unsafe {
+            (*closure)();
+        }
     }
 }
 
@@ -200,9 +203,10 @@ where
         _cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         _args: *const *const c_void,
-        closure: &FN,
+        closure: *const FN,
     ) {
-        let result = closure();
+        // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
+        let result = unsafe { (*closure)() };
 
         // SAFETY:
         // * `cif`'s layout is determined by the `AsFfiType` implementations.
@@ -240,7 +244,7 @@ macro_rules! impl_closurable_for_arguments {
                 _cif: &ffi_cif,
                 _result_space: *mut MaybeUninit<()>,
                 args: *const *const c_void,
-                closure: &FN,
+                closure: *const FN,
             ) {
                 let mut idx = 0;
                 $(
@@ -253,7 +257,9 @@ macro_rules! impl_closurable_for_arguments {
                 // Nonsensical line to make the linter happy.
                 let _ = idx;
 
-                closure($($var),+);
+                // SAFETY: It is up to the caller to assure that `closure` points to a valid
+                // closure.
+                unsafe { (*closure)($($var),+); }
             }
         }
 
@@ -281,7 +287,7 @@ macro_rules! impl_closurable_for_arguments {
                 _cif: &ffi_cif,
                 result_space: *mut MaybeUninit<RET>,
                 args: *const *const c_void,
-                closure: &FN,
+                closure: *const FN,
             ) {
                 let mut idx = 0;
                 $(
@@ -295,7 +301,9 @@ macro_rules! impl_closurable_for_arguments {
                 let _ = idx;
 
 
-                let result = closure($($var),+);
+                // SAFETY: It is up to the caller to assure that `closure` points to a valid
+                // closure.
+                let result = unsafe { (*closure)($($var),+) };
 
                 // SAFETY:
                 // * `cif`'s layout is determined by the `AsFfiType` implementations.
@@ -366,7 +374,7 @@ where
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
-        closure: &mut FN,
+        closure: *mut FN,
     );
 
     /// Closure handle function called by libffi, which in turn reads the provided arguments and
@@ -401,16 +409,17 @@ where
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
-        closure_data: &mut (FN, AtomicBool),
+        closure_data: *mut (FN, AtomicBool),
     ) {
-        Self::lock(&closure_data.1);
-
-        // SAFETY: See this function's Safety section.
+        // SAFETY: It is up to the caller to assure that `closure_data` points to a
+        // `(FN, AtomicBool)` tuple. For further reference, see this function's Safety section.
         unsafe {
-            Self::call_closure_impl(cif, result_space, args, &mut closure_data.0);
-        }
+            Self::lock(&(*closure_data).1);
 
-        Self::unlock(&closure_data.1);
+            Self::call_closure_impl(cif, result_space, args, &raw mut (*closure_data).0);
+
+            Self::unlock(&(*closure_data).1);
+        }
     }
 
     /// Unwindable version of call_closure for mutable closures. Only used for testing. See
@@ -421,16 +430,17 @@ where
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
-        closure_data: &mut (FN, AtomicBool),
+        closure_data: *mut (FN, AtomicBool),
     ) {
-        Self::lock(&closure_data.1);
-
-        // SAFETY: See [`ClosureMutable::call_closure`]'s Safety section.
+        // SAFETY: It is up to the caller to assure that `closure_data` points to a
+        // `(FN, AtomicBool)` tuple. For further reference, see this function's Safety section.
         unsafe {
-            Self::call_closure_impl(cif, result_space, args, &mut closure_data.0);
-        }
+            Self::lock(&(*closure_data).1);
 
-        Self::unlock(&closure_data.1);
+            Self::call_closure_impl(cif, result_space, args, &raw mut (*closure_data).0);
+
+            Self::unlock(&(*closure_data).1);
+        }
     }
 
     /// Helper function that will "lock" the `AtomicBool`. Only for internal usage.
@@ -468,9 +478,12 @@ where
         _cif: &ffi_cif,
         _result_space: *mut MaybeUninit<()>,
         _args: *const *const c_void,
-        closure: &mut FN,
+        closure: *mut FN,
     ) {
-        closure();
+        // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
+        unsafe {
+            (*closure)();
+        }
     }
 }
 
@@ -497,9 +510,10 @@ where
         _cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
         _args: *const *const c_void,
-        closure: &mut FN,
+        closure: *mut FN,
     ) {
-        let result = closure();
+        // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
+        let result = unsafe { (*closure)() };
 
         // SAFETY:
         // * `cif`'s layout is determined by the `AsFfiType` implementations.
@@ -537,7 +551,7 @@ macro_rules! impl_closuremutable_for_arguments {
                 _cif: &ffi_cif,
                 _result_space: *mut MaybeUninit<()>,
                 args: *const *const c_void,
-                closure: &mut FN,
+                closure: *mut FN,
             ) {
                 let mut idx = 0;
                 $(
@@ -550,7 +564,8 @@ macro_rules! impl_closuremutable_for_arguments {
                 // Nonsensical line to make the linter happy.
                 let _ = idx;
 
-                closure($($var),+);
+                // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
+                unsafe { (*closure)($($var),+); }
             }
         }
 
@@ -578,7 +593,7 @@ macro_rules! impl_closuremutable_for_arguments {
                 _cif: &ffi_cif,
                 result_space: *mut MaybeUninit<RET>,
                 args: *const *const c_void,
-                closure: &mut FN,
+                closure: *mut FN,
             ) {
                 let mut idx = 0;
                 $(
@@ -592,7 +607,9 @@ macro_rules! impl_closuremutable_for_arguments {
                 let _ = idx;
 
 
-                let result = closure($($var),+);
+                // SAFETY: It is up to the caller to assure that `closure` points to a valid
+                // closure.
+                let result = unsafe { (*closure)($($var),+) };
 
                 // SAFETY:
                 // * `cif`'s layout is determined by the `AsFfiType` implementations.

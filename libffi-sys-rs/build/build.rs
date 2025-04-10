@@ -1,24 +1,25 @@
-#![allow(
-    clippy::all,
-    missing_docs,
-    reason = "Ignoring lints until build scripts are reworked."
-)]
+//! Build script for libffi-sys. MSVC targets are handled as a special case because it is assumed
+//! that it may not be possible to run the configure script. All other targets use the configure
+//! script and compile with "make".
 
-mod common;
-#[cfg(target_env = "msvc")]
 mod msvc;
-#[cfg(not(target_env = "msvc"))]
 mod not_msvc;
 
-#[cfg(target_env = "msvc")]
-use msvc::{build_and_link, probe_and_link};
-#[cfg(not(target_env = "msvc"))]
-use not_msvc::{build_and_link, probe_and_link};
+use std::env;
+use std::process::Command;
+
+fn run_command(which: &'static str, cmd: &mut Command) {
+    assert!(cmd.status().expect(which).success(), "{}", which);
+}
 
 fn main() {
-    if cfg!(feature = "system") {
-        probe_and_link();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+
+    if target_env == "msvc" {
+        msvc::build_and_link();
+    } else if env::var_os("CARGO_FEATURE_SYSTEM").is_some() {
+        not_msvc::link_dylib();
     } else {
-        build_and_link();
+        not_msvc::build_and_link();
     }
 }

@@ -26,6 +26,7 @@ variant-size-differences = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = 2 }
+from_iter_instead_of_collect = { level = "allow", priority = 4 }
 must_use_candidate = { level = "allow", priority = 9 }
 cargo = { level = "warn", priority = 3 }
 

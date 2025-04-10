@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{env, fs};
 
-use crate::common::{env, fs, run_command};
+use crate::run_command;
 
 pub fn build_and_link() {
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -22,19 +23,20 @@ pub fn build_and_link() {
     // On Linux, don't preserve the attributes of the source directory.
     // Not all cp versions support --no-preserve=mode,ownership, so we
     // first check if it's available.
-    let mut command = Command::new("cp");
+    let mut cp = Command::new("cp");
+
     let has_no_preserve_flag = {
         let output = Command::new("cp").arg("--help").output().unwrap().stdout;
         String::from_utf8(output).unwrap().contains("--no-preserve")
     };
 
     if has_no_preserve_flag {
-        command.arg("--no-preserve=mode,ownership");
+        cp.arg("--no-preserve=mode,ownership");
     }
 
     run_command(
         "Copying libffi into the build directory",
-        command.arg("-R").arg("libffi").arg(&build_dir),
+        cp.arg("-R").arg("libffi").arg(&build_dir),
     );
 
     // Generate configure, run configure, make, make install
@@ -52,23 +54,26 @@ pub fn build_and_link() {
     println!("cargo:rustc-link-lib=static=ffi");
     println!("cargo:rustc-link-search={}", libdir.display());
     println!("cargo:rustc-link-search={}", libdir64.display());
-}
-
-pub fn probe_and_link() {
-    println!("cargo:rustc-link-lib=dylib=ffi");
+    println!("cargo::rerun-if-changed=build/");
+    println!("cargo::rerun-if-changed=libffi/include");
+    println!("cargo::rerun-if-changed=libffi/src");
 }
 
 pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
-    let mut command = Command::new("sh");
+    let mut configure = Command::new("sh");
 
-    command
+    configure
         .arg("./configure")
         .arg("--with-pic")
         .arg("--disable-shared")
         .arg("--disable-docs");
 
+    // Note: in autoconf land, host is where the code will run and not the machine compiling the
+    // code, unlike in Rust where target is where the code will run and host is the machine
+    // compiling.
     let target = env::var("TARGET").unwrap();
     let host = env::var("HOST").unwrap();
+
     if target != host {
         let cross_host = match target.as_str() {
             // Autoconf uses riscv64 while Rust uses riscv64gc for the architecture
@@ -81,21 +86,12 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             // Everything else should be fine to pass straight through
             other => other,
         };
-        command.arg(format!("--host={cross_host}"));
+        configure.arg(format!("--host={cross_host}"));
     }
 
-    let mut c_cfg = cc::Build::new();
-    c_cfg
-        .cargo_metadata(false)
-        .target(&target)
-        .warnings(false)
-        // Work around a build failure with clang-16 and newer.  Can be removed
-        // once https://github.com/libffi/libffi/pull/764 is merged.
-        .flag_if_supported("-Wno-implicit-function-declaration")
-        .host(&host);
-    let c_compiler = c_cfg.get_compiler();
+    let c_compiler = cc::Build::new().cargo_metadata(false).get_compiler();
 
-    command.env("CC", c_compiler.path());
+    configure.env("CC", c_compiler.path());
 
     let mut cflags = c_compiler.cflags_env();
     match env::var_os("CFLAGS") {
@@ -105,35 +101,35 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
             cflags.push(&flags);
         }
     }
-    command.env("CFLAGS", cflags);
+    configure.env("CFLAGS", cflags);
 
     for (k, v) in c_compiler.env() {
-        command.env(k, v);
+        configure.env(k, v);
     }
 
-    command.current_dir(build_dir);
+    configure.current_dir(build_dir);
 
-    if cfg!(windows) {
+    if env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
         // When using MSYS2, OUT_DIR will be a Windows like path such as
         // C:\foo\bar. Unfortunately, the various scripts used for building
         // libffi do not like such a path, so we have to turn this into a Unix
         // like path such as /c/foo/bar.
-        //
-        // This code assumes the path only uses : for the drive letter, and only
-        // uses \ as a component separator. It will likely break for file paths
-        // that include a :.
         let mut msys_prefix = prefix
             .to_str()
             .unwrap()
-            .replace(":\\", "/")
+            .replacen(':', "", 1)
             .replace('\\', "/");
 
         msys_prefix.insert(0, '/');
 
-        command.arg("--prefix").arg(msys_prefix);
+        configure.arg("--prefix").arg(msys_prefix);
     } else {
-        command.arg("--prefix").arg(prefix);
+        configure.arg("--prefix").arg(prefix);
     }
 
-    run_command("Configuring libffi", &mut command);
+    run_command("Configuring libffi", &mut configure);
+}
+
+pub fn link_dylib() {
+    println!("cargo:rustc-link-lib=dylib=ffi");
 }

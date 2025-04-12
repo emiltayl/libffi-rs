@@ -7,32 +7,25 @@
 #![allow(unused, reason = "Values are re-exported.")]
 
 /// From libffi:src/x86/ffitarget.h.
-/// See: <https://github.com/libffi/libffi/blob/369ef49f71186fc9d6ab15614488ad466fac3fc1/src/x86/ffitarget.h#L80>
+/// See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/x86/ffitarget.h#L83>
 mod x86_family {
-    pub mod x86_win64 {
+    pub mod x86 {
         use crate::ffi_abi;
 
         pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
-        pub const ffi_abi_FFI_WIN64: ffi_abi = 1;
-        pub const ffi_abi_FFI_GNUW64: ffi_abi = 2;
-        pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 3;
+        pub const ffi_abi_FFI_SYSV: ffi_abi = 1;
+        pub const ffi_abi_FFI_THISCALL: ffi_abi = 3;
+        pub const ffi_abi_FFI_FASTCALL: ffi_abi = 4;
+        pub const ffi_abi_FFI_STDCALL: ffi_abi = 5;
+        pub const ffi_abi_FFI_PASCAL: ffi_abi = 6;
+        pub const ffi_abi_FFI_REGISTER: ffi_abi = 7;
+        pub const ffi_abi_FFI_MS_CDECL: ffi_abi = 8;
+        pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 9;
+        pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV;
 
-        mod gnu {
-            pub const ffi_abi_FFI_DEFAULT_ABI: crate::ffi_abi = super::ffi_abi_FFI_GNUW64;
-        }
-
-        mod msvc {
-            pub const ffi_abi_FFI_DEFAULT_ABI: crate::ffi_abi = super::ffi_abi_FFI_GNUW64;
-        }
-
-        #[cfg(target_env = "gnu")]
-        pub use gnu::*;
-        #[cfg(target_env = "msvc")]
-        pub use msvc::*;
-
-        // See: https://github.com/libffi/libffi/blob/0f2dd369cd5edcefad29b3fca4e1d08cb34f8f19/src/x86/ffitarget.h#L141
-        pub const FFI_TRAMPOLINE_SIZE: usize = 32;
-        pub const FFI_NATIVE_RAW_API: u32 = 0;
+        // See: https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/x86/ffitarget.h#L149
+        pub const FFI_TRAMPOLINE_SIZE: usize = 16;
+        pub const FFI_NATIVE_RAW_API: u32 = 1;
     }
 
     pub mod x86_64 {
@@ -46,7 +39,7 @@ mod x86_family {
         pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 5;
         pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_UNIX64;
 
-        // See: https://github.com/libffi/libffi/blob/0f2dd369cd5edcefad29b3fca4e1d08cb34f8f19/src/x86/ffitarget.h#L141
+        // See: https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/x86/ffitarget.h#L140
         pub const FFI_TRAMPOLINE_SIZE: usize = 32;
         pub const FFI_NATIVE_RAW_API: u32 = 0;
     }
@@ -65,28 +58,35 @@ mod x86_family {
         pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 8;
         pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_MS_CDECL;
 
-        // See: https://github.com/libffi/libffi/blob/369ef49f71186fc9d6ab15614488ad466fac3fc1/src/x86/ffitarget.h#L137
-        pub const FFI_TRAMPOLINE_SIZE: usize = 12;
+        // See: https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/x86/ffitarget.h#L149
+        pub const FFI_TRAMPOLINE_SIZE: usize = 16;
         pub const FFI_NATIVE_RAW_API: u32 = 1;
     }
 
-    pub mod x86 {
+    pub mod x86_win64 {
         use crate::ffi_abi;
 
         pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
-        pub const ffi_abi_FFI_SYSV: ffi_abi = 1;
-        pub const ffi_abi_FFI_THISCALL: ffi_abi = 3;
-        pub const ffi_abi_FFI_FASTCALL: ffi_abi = 4;
-        pub const ffi_abi_FFI_STDCALL: ffi_abi = 5;
-        pub const ffi_abi_FFI_PASCAL: ffi_abi = 6;
-        pub const ffi_abi_FFI_REGISTER: ffi_abi = 7;
-        pub const ffi_abi_FFI_MS_CDECL: ffi_abi = 8;
-        pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 9;
-        pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV;
+        pub const ffi_abi_FFI_WIN64: ffi_abi = 1;
+        pub const ffi_abi_FFI_GNUW64: ffi_abi = 2;
+        pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 3;
 
-        // See: https://github.com/libffi/libffi/blob/369ef49f71186fc9d6ab15614488ad466fac3fc1/src/x86/ffitarget.h#L137
-        pub const FFI_TRAMPOLINE_SIZE: usize = 12;
-        pub const FFI_NATIVE_RAW_API: u32 = 1;
+        mod gnu {
+            pub const ffi_abi_FFI_DEFAULT_ABI: crate::ffi_abi = super::ffi_abi_FFI_GNUW64;
+        }
+
+        mod msvc {
+            pub const ffi_abi_FFI_DEFAULT_ABI: crate::ffi_abi = super::ffi_abi_FFI_WIN64;
+        }
+
+        #[cfg(target_env = "gnu")]
+        pub use gnu::*;
+        #[cfg(target_env = "msvc")]
+        pub use msvc::*;
+
+        // See: https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/x86/ffitarget.h#L140
+        pub const FFI_TRAMPOLINE_SIZE: usize = 32;
+        pub const FFI_NATIVE_RAW_API: u32 = 0;
     }
 
     pub const FFI_GO_CLOSURES: u32 = 1;
@@ -102,7 +102,7 @@ pub use x86_family::x86_win32::*;
 pub use x86_family::x86_win64::*;
 
 /// From libffi:src/arm/ffitarget.h.
-/// See: <https://github.com/libffi/libffi/blob/db5706ff285c476aa3c0f811ff2b188319ac3ebe/src/arm/ffitarget.h>
+/// See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/arm/ffitarget.h>
 mod arm {
     use crate::ffi_abi;
 
@@ -117,7 +117,7 @@ mod arm {
     #[cfg(not(target_abi = "eabihf"))]
     pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV;
 
-    // See: <https://github.com/libffi/libffi/blob/db5706ff285c476aa3c0f811ff2b188319ac3ebe/src/arm/ffitarget.h#L84>
+    // See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/arm/ffitarget.h#L84>
     pub const FFI_GO_CLOSURES: u32 = 1;
     pub const FFI_TRAMPOLINE_SIZE: usize = 12;
     pub const FFI_NATIVE_RAW_API: u32 = 0;
@@ -127,14 +127,19 @@ mod arm {
 pub use arm::*;
 
 /// From libffi:src/aarch64/ffitarget.h.
-/// See: <https://github.com/libffi/libffi/blob/c2a6859012d928b67a83619bd5087674a96b9254/src/aarch64/ffitarget.h#L44>
+/// See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/aarch64/ffitarget.h#L44>
 mod aarch64 {
     use crate::ffi_abi;
 
     pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
     pub const ffi_abi_FFI_SYSV: ffi_abi = 1;
-    pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 2;
+    pub const ffi_abi_FFI_WIN64: ffi_abi = 2;
+    pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 3;
+
+    #[cfg(unix)]
     pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_SYSV;
+    #[cfg(windows)]
+    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_WIN64;
 
     pub const FFI_NATIVE_RAW_API: u32 = 0;
 
@@ -142,7 +147,7 @@ mod aarch64 {
     pub const FFI_TRAMPOLINE_SIZE: usize = 16;
 
     #[cfg(not(target_vendor = "apple"))]
-    pub const FFI_TRAMPOLINE_SIZE: usize = 32;
+    pub const FFI_TRAMPOLINE_SIZE: usize = 24;
 
     // No GO_CLOSURES on iOS or Windows
     #[cfg(not(any(target_os = "windows", target_vendor = "apple")))]
@@ -153,7 +158,7 @@ mod aarch64 {
 pub use aarch64::*;
 
 /// From libffi:src/powerpc/ffitarget.h.
-/// See: <https://github.com/libffi/libffi/blob/73dd43afc8a447ba98ea02e9aad4c6898dc77fb0/src/powerpc/ffitarget.h#L60>
+/// See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/powerpc/ffitarget.h#L60>
 #[expect(
     unexpected_cfgs,
     reason = "Support for non-standard target powerpc-unknown-linux-gnuspe?"
@@ -303,7 +308,7 @@ pub use powerpc_family::powerpc::*;
 pub use powerpc_family::powerpc64::*;
 
 /// From libffi:src/riscv/ffitarget.h
-/// See: <https://github.com/libffi/libffi/blob/4cb776bc8075332d2f3e59f51785d621fcda48f6/src/riscv/ffitarget.h>
+/// See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/riscv/ffitarget.h>
 mod riscv {
     use crate::ffi_abi;
 
@@ -325,7 +330,7 @@ mod riscv {
 pub use riscv::*;
 
 /// From libffi:src/s390/ffitarget.h
-/// See: <https://github.com/libffi/libffi/blob/c6dc125afba294b9b9613392c492ae18df3ede84/src/s390/ffitarget.h>
+/// See: <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/s390/ffitarget.h>
 mod s390x {
     use crate::ffi_abi;
 
@@ -341,26 +346,6 @@ mod s390x {
 
 #[cfg(target_arch = "s390x")]
 pub use s390x::*;
-
-/// From libffi:src/loongarch64/ffitarget.h.
-/// See: <https://github.com/libffi/libffi/blob/f24180be1367f942824365b131ae894b9c769c7d/src/loongarch64/ffitarget.h#L47>
-mod loongarch64 {
-    use crate::ffi_abi;
-
-    pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
-    pub const ffi_abi_FFI_LP64S: ffi_abi = 1;
-    pub const ffi_abi_FFI_LP64F: ffi_abi = 2;
-    pub const ffi_abi_FFI_LP64D: ffi_abi = 3;
-    pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 4;
-    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_LP64D;
-
-    pub const FFI_GO_CLOSURES: u32 = 1;
-    pub const FFI_TRAMPOLINE_SIZE: usize = 24;
-    pub const FFI_NATIVE_RAW_API: u32 = 0;
-}
-
-#[cfg(target_arch = "loongarch64")]
-pub use loongarch64::*;
 
 /// From libffi:src/mips/ffitarget.h
 /// See: <https://github.com/libffi/libffi/blob/4cb776bc8075332d2f3e59f51785d621fcda48f6/src/mips/ffitarget.h>

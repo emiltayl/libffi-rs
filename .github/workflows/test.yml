@@ -60,43 +60,49 @@ jobs:
         run: ./scripts/targettest.sh SETUP
 
   windows-latest-gnu:
-    name: Windows GNU
+    strategy:
+      fail-fast: false
+      matrix:
+        data:
+        - {target: x86_64-pc-windows-gnu, msys: UCRT64}
+        - {target: i686-pc-windows-gnu, msys: MINGW32}
+    name: x86_64 Windows GNU - ${{ matrix.target }}
     runs-on: windows-latest
     steps:
       - uses: msys2/setup-msys2@61f9e5e925871ba6c9e3e8da24ede83ea27fa91f # v2.27.0
         with:
           release: false
           path-type: inherit
-          msystem: UCRT64
+          msystem: ${{ matrix.data.msys }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: dtolnay/rust-toolchain@888c2e1ea69ab0d4330cbf0af1ecc7b68f368cc1 # 2025-03-15
         with:
-          toolchain: nightly-x86_64-pc-windows-gnu
-          targets: x86_64-pc-windows-gnu
+          toolchain: nightly-${{ matrix.data.target }}
+          targets: ${{ matrix.target }}
           components: clippy, rustfmt, miri
       - name: Add additional Rust toolchains
         run: |
-          rustup toolchain install --target x86_64-pc-windows-gnu 1.85.0-x86_64-pc-windows-gnu
-          rustup toolchain install --target x86_64-pc-windows-gnu stable-x86_64-pc-windows-gnu
+          rustup toolchain install --target ${{ matrix.data.target }} 1.85.0-${{ matrix.data.target }}
+          rustup toolchain install --target ${{ matrix.data.target }} stable-${{ matrix.data.target }}
       - name: CI
         # I was unable to get *-gnu to play nice with scripts/ci-checks.bat, so this action will
         # only execute part of the script instead.
         shell: msys2 {0}
         run: |
-          cargo +nightly-x86_64-pc-windows-gnu fmt --all --check --verbose
-          cargo +nightly-x86_64-pc-windows-gnu fmt --manifest-path=examples/no_std_run/Cargo.toml --all --check --verbose
-          cargo +nightly-x86_64-pc-windows-gnu clippy --all --all-targets --all-features --verbose -- -D warnings
-          cargo +nightly-x86_64-pc-windows-gnu clippy --manifest-path=examples/no_std_run/Cargo.toml --all --all-features --verbose -- -D warnings
-          cargo +nightly-x86_64-pc-windows-gnu test --workspace --all-targets --verbose
-          cargo +nightly-x86_64-pc-windows-gnu miri test --workspace --lib --verbose
-          cargo +nightly-x86_64-pc-windows-gnu run --example call_c_fn --verbose
-          cargo +nightly-x86_64-pc-windows-gnu run --manifest-path=examples/no_std_run/Cargo.toml --verbose
-          cargo +1.85.0-x86_64-pc-windows-gnu test --workspace --all-targets --verbose
-          cargo +1.85.0-x86_64-pc-windows-gnu run --example call_c_fn --verbose
-          cargo +1.85.0-x86_64-pc-windows-gnu run --manifest-path=examples/no_std_run/Cargo.toml --verbose
-          cargo +stable-x86_64-pc-windows-gnu test --workspace --all-targets --verbose
-          cargo +stable-x86_64-pc-windows-gnu run --example call_c_fn --verbose
-          cargo +stable-x86_64-pc-windows-gnu run --manifest-path=examples/no_std_run/Cargo.toml --verbose
+          cargo +nightly-${{ matrix.data.target }} fmt --all --check --verbose
+          cargo +nightly-${{ matrix.data.target }} fmt --manifest-path=examples/no_std_run/Cargo.toml --all --check --verbose
+          cargo +nightly-${{ matrix.data.target }} clippy --all --all-targets --all-features --verbose -- -D warnings
+          cargo +nightly-${{ matrix.data.target }} clippy --manifest-path=examples/no_std_run/Cargo.toml --all --all-features --verbose -- -D warnings
+          cargo +nightly-${{ matrix.data.target }} test --workspace --all-targets --verbose
+          cargo +nightly-${{ matrix.data.target }} miri test --workspace --lib --verbose
+          cargo +nightly-${{ matrix.data.target }} run --example call_c_fn --verbose
+          cargo +nightly-${{ matrix.data.target }} run --manifest-path=examples/no_std_run/Cargo.toml --verbose
+          cargo +1.85.0-${{ matrix.data.target }} test --workspace --all-targets --verbose
+          cargo +1.85.0-${{ matrix.data.target }} run --example call_c_fn --verbose
+          cargo +1.85.0-${{ matrix.data.target }} run --manifest-path=examples/no_std_run/Cargo.toml --verbose
+          cargo +stable-${{ matrix.data.target }} test --workspace --all-targets --verbose
+          cargo +stable-${{ matrix.data.target }} run --example call_c_fn --verbose
+          cargo +stable-${{ matrix.data.target }} run --manifest-path=examples/no_std_run/Cargo.toml --verbose
 
   windows-latest-msvc:
     strategy:

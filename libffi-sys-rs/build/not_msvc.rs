@@ -76,6 +76,9 @@ pub fn configure_libffi(prefix: PathBuf, build_dir: &Path) {
 
     if target != host {
         let cross_host = match target.as_str() {
+            // Autoconf uses different target triplets for compiling with mingw
+            "i686-pc-windows-gnu" => "i686-w64-mingw32",
+            "x86_64-pc-windows-gnu" => "x86_64-w64-mingw32",
             // Autoconf uses riscv64 while Rust uses riscv64gc for the architecture
             "riscv64gc-unknown-linux-gnu" => "riscv64-unknown-linux-gnu",
             // Autoconf does not yet recognize illumos, but Solaris should be fine

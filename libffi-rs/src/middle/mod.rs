@@ -224,6 +224,9 @@ unsafe impl Sync for Cif {}
 
 #[cfg(all(test, not(miri)))]
 mod test {
+    use core::f64;
+    use std::f32;
+
     use super::*;
 
     extern "C" fn add_it(n: i64, m: i64) -> i64 {
@@ -314,6 +317,124 @@ mod test {
         // SAFETY: This should panic before any potential unsafe action happens.
         let _result: i64 =
             unsafe { cif.call(CodePtr(add_it as *mut c_void), &[Arg::borrowed(&0u64)]) };
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct SmallFfiStruct {
+        pub number: i32,
+        pub tag: u8,
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct LargeFfiStruct {
+        pub a: u64,
+        pub b: u64,
+        pub c: u64,
+        pub d: u64,
+    }
+
+    extern "C" fn identity_i8(arg: i8) -> i8 {
+        arg
+    }
+    extern "C" fn identity_u8(arg: u8) -> u8 {
+        arg
+    }
+    extern "C" fn identity_i16(arg: i16) -> i16 {
+        arg
+    }
+    extern "C" fn identity_u16(arg: u16) -> u16 {
+        arg
+    }
+    extern "C" fn identity_i32(arg: i32) -> i32 {
+        arg
+    }
+    extern "C" fn identity_u32(arg: u32) -> u32 {
+        arg
+    }
+    extern "C" fn identity_i64(arg: i64) -> i64 {
+        arg
+    }
+    extern "C" fn identity_u64(arg: u64) -> u64 {
+        arg
+    }
+    extern "C" fn identity_isize(arg: isize) -> isize {
+        arg
+    }
+    extern "C" fn identity_usize(arg: usize) -> usize {
+        arg
+    }
+    extern "C" fn identity_f32(arg: f32) -> f32 {
+        arg
+    }
+    extern "C" fn identity_f64(arg: f64) -> f64 {
+        arg
+    }
+    extern "C" fn identity_const_ptr(arg: *const i32) -> *const i32 {
+        arg
+    }
+    extern "C" fn identity_mut_ptr(arg: *mut i32) -> *mut i32 {
+        arg
+    }
+    extern "C" fn identity_small_ffi_struct(arg: SmallFfiStruct) -> SmallFfiStruct {
+        arg
+    }
+    extern "C" fn identity_large_ffi_struct(arg: LargeFfiStruct) -> LargeFfiStruct {
+        arg
+    }
+
+    macro_rules! gen_identity_fn_test {
+        ($fn:ident($ty:ty = $val:expr, $ffity:expr)) => {{
+            let cif = Cif::new(&[$ffity], Some($ffity));
+            let orig: $ty = $val;
+            // SAFETY: It is assumed that $fn is a valid function accepting $ty and returning $ty.
+            let result: $ty = unsafe { cif.call(CodePtr($fn as *mut _), &[Arg::borrowed(&orig)]) };
+            assert_eq!(orig, result);
+        }};
+    }
+
+    #[expect(
+        clippy::float_cmp,
+        reason = "Direct comparison of floats that have not been modified."
+    )]
+    #[test]
+    fn test_identity_functions() {
+        let mut num: i32 = 0;
+
+        let small_struct = Type::structure(&[Type::I32, Type::U8]);
+        let large_struct = Type::structure(&[Type::U64, Type::U64, Type::U64, Type::U64]);
+
+        gen_identity_fn_test!(identity_i8(i8 = 0x55, Type::I8));
+        gen_identity_fn_test!(identity_u8(u8 = 0xAA, Type::U8));
+        gen_identity_fn_test!(identity_i16(i16 = 0x5544, Type::I16));
+        gen_identity_fn_test!(identity_u16(u16 = 0xAABB, Type::U16));
+        gen_identity_fn_test!(identity_i32(i32 = 0x5544_3322, Type::I32));
+        gen_identity_fn_test!(identity_u32(u32 = 0xAABB_CCDD, Type::U32));
+        gen_identity_fn_test!(identity_i64(i64 = 0x5544_3322_1100_AABB, Type::I64));
+        gen_identity_fn_test!(identity_u64(u64 = 0xAABB_CCDD_EEFF_0011, Type::U64));
+        gen_identity_fn_test!(identity_isize(isize = 0x5544_3322, Type::Isize));
+        gen_identity_fn_test!(identity_usize(usize = 0xAABB_CCDD, Type::Usize));
+        gen_identity_fn_test!(identity_f32(f32 = f32::consts::PI, Type::F32));
+        gen_identity_fn_test!(identity_f64(f64 = f64::consts::TAU, Type::F64));
+        gen_identity_fn_test!(identity_const_ptr(*const i32 = &raw const num, Type::Pointer));
+        gen_identity_fn_test!(identity_mut_ptr(*mut i32 = &raw mut num, Type::Pointer));
+        gen_identity_fn_test!(identity_small_ffi_struct(
+            SmallFfiStruct = SmallFfiStruct {
+                number: 0x5544_3322,
+                tag: 0xAA
+            },
+            small_struct.clone()
+        ));
+        gen_identity_fn_test!(identity_large_ffi_struct(
+            LargeFfiStruct = LargeFfiStruct {
+                a: 0x1234_5678_9ABC_DEF0,
+                b: 0x0FED_CBA9_8765_4321,
+                c: 0xABBA_CDDC_EFFE_0110,
+                d: 0x192A_3B4C_5D6E_7F80,
+            },
+            large_struct.clone()
+        ));
     }
 }
 

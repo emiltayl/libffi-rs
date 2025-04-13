@@ -602,13 +602,11 @@ mod miritest {
                 let closure = <$closurety>::new_unwindable(|| {});
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
-                    let mut null = core::ptr::null_mut::<c_void>();
-
                     let fun = (*closure.inner.alloc).fun.unwrap();
                     fun(
                         (*closure.inner.alloc).cif,
-                        (&raw mut null).cast(),
-                        (&raw mut null).cast(),
+                        core::ptr::null_mut::<c_void>(),
+                        core::ptr::null_mut::<*mut c_void>(),
                         (*closure.inner.alloc).user_data,
                     );
                 }
@@ -622,14 +620,13 @@ mod miritest {
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let fun = (*closure.inner.alloc).fun.unwrap();
-                    let mut arg_ptrs = core::ptr::null_mut::<c_void>();
 
                     let result = if size_of::<$ty>() < size_of::<usize>() {
                         let mut result = MaybeUninit::<usize>::uninit();
                         fun(
                             (*closure.inner.alloc).cif,
                             result.as_mut_ptr().cast(),
-                            (&raw mut arg_ptrs).cast(),
+                            core::ptr::null_mut::<*mut c_void>(),
                             (*closure.inner.alloc).user_data,
                         );
 
@@ -639,7 +636,7 @@ mod miritest {
                         fun(
                             (*closure.inner.alloc).cif,
                             result.as_mut_ptr().cast(),
-                            (&raw mut arg_ptrs).cast(),
+                            core::ptr::null_mut::<*mut c_void>(),
                             (*closure.inner.alloc).user_data,
                         );
 
@@ -660,14 +657,13 @@ mod miritest {
                 });
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
-                    let mut null = core::ptr::null_mut::<c_void>();
                     let mut $name: $ty = $val;
                     let mut arg_ptrs = [(&raw mut $name).cast::<c_void>()];
 
                     let fun = (*closure.inner.alloc).fun.unwrap();
                     fun(
                         (*closure.inner.alloc).cif,
-                        (&raw mut null).cast(),
+                        core::ptr::null_mut::<c_void>(),
                         arg_ptrs.as_mut_ptr(),
                         (*closure.inner.alloc).user_data,
                     );
@@ -726,7 +722,6 @@ mod miritest {
                 });
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
-                    let mut null = core::ptr::null_mut::<c_void>();
                     let mut $name: $ty = $val;
                     $(let mut $restname: $restty = $restval;)+
                     let mut arg_ptrs = [
@@ -737,7 +732,7 @@ mod miritest {
                     let fun = (*closure.inner.alloc).fun.unwrap();
                     fun(
                         (*closure.inner.alloc).cif,
-                        (&raw mut null).cast(),
+                        core::ptr::null_mut::<c_void>(),
                         arg_ptrs.as_mut_ptr(),
                         (*closure.inner.alloc).user_data,
                     );
@@ -756,7 +751,6 @@ mod miritest {
                 });
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
-                    let mut null = core::ptr::null_mut::<c_void>();
                     let mut $name: $ty = $val;
                     $(let mut $restname: $restty = $restval;)+
                     let mut arg_ptrs = [
@@ -765,12 +759,6 @@ mod miritest {
                     ];
 
                     let fun = (*closure.inner.alloc).fun.unwrap();
-                    fun(
-                        (*closure.inner.alloc).cif,
-                        (&raw mut null).cast(),
-                        arg_ptrs.as_mut_ptr(),
-                        (*closure.inner.alloc).user_data,
-                    );
                     let result = if size_of::<$retty>() < size_of::<usize>() {
                         let mut result = MaybeUninit::<usize>::uninit();
                         fun(

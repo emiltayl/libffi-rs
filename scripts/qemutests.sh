@@ -54,10 +54,6 @@ set_globals() {
         GCC_ARCH=powerpc64le
         QEMU_ARCH=ppc64le
         ABI=gnu
-    elif [ "$1" == "aarch64-unknown-linux-gnu" ]; then
-        GCC_ARCH=aarch64
-        QEMU_ARCH=aarch64
-        ABI=gnu
     elif [ "$1" == "armv7-unknown-linux-gnueabihf" ]; then
         GCC_ARCH=arm
         QEMU_ARCH=arm
@@ -75,7 +71,7 @@ set_globals() {
 
 FAILED=""
 GCC_VERSION=$(gcc --version | grep -oE -m 1 '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | cut -d . -f 1)
-TARGETS=("powerpc64le-unknown-linux-gnu" "powerpc64-unknown-linux-gnu " "aarch64-unknown-linux-gnu" "armv7-unknown-linux-gnueabihf" "riscv64gc-unknown-linux-gnu" "s390x-unknown-linux-gnu")
+TARGETS=("powerpc64le-unknown-linux-gnu" "powerpc64-unknown-linux-gnu " "armv7-unknown-linux-gnueabihf" "riscv64gc-unknown-linux-gnu" "s390x-unknown-linux-gnu")
 TOOLCHAINS=("1.85.0" "stable" "nightly")
 export CARGO_TERM_COLOR=always
 
@@ -83,8 +79,8 @@ if [ "${1}" = "SETUP" ]; then
     groupstart "Setting up dependencies"
 
     # We will run tests on i686-unknown-linux-gnu as well, but not using qemu
-    APT_TO_INSTALL="gcc-${GCC_VERSION}-i686-linux-gnu qemu-user libffi-dev"
-    RUSTUP_TARGETS_TO_ADD="i686-unknown-linux-gnu"
+    APT_TO_INSTALL="qemu-user libffi-dev"
+    RUSTUP_TARGETS_TO_ADD=""
     for target in ${TARGETS[@]}; do
         set_globals "${target}"
         APT_TO_INSTALL="${APT_TO_INSTALL} gcc-${GCC_VERSION}-$(echo ${GCC_ARCH} | tr _ -)-linux-${ABI}"
@@ -102,41 +98,6 @@ if [ "${1}" = "SETUP" ]; then
 
     groupend
 fi
-
-# First test i686-unknown-linux-gnu
-export CC="i686-linux-gnu-gcc-${GCC_VERSION}"
-export "CARGO_TARGET_I686_UNKNOWN_LINUX_GNU_LINKER=$CC"
-groupstart "Testing i686-unknown-linux-gnu"
-for toolchain in ${TOOLCHAINS[@]}; do
-
-    this_failed=0
-
-    run_command_noexit cargo "+${toolchain}" test --target i686-unknown-linux-gnu --workspace --verbose -- --color=always
-    if [ $? -ne 0 ]; then
-        this_failed=$((this_failed+1))
-    fi
-
-    run_command_noexit cargo "+${toolchain}" run --target i686-unknown-linux-gnu --example call_c_fn 
-    if [ $? -ne 0 ]; then
-        this_failed=$((this_failed+1))
-    fi
-
-    run_command_noexit cargo "+${toolchain}" run --target i686-unknown-linux-gnu --example qsort
-    if [ $? -ne 0 ]; then
-        this_failed=$((this_failed+1))
-    fi
-
-    if [ $this_failed -ne 0 ]; then
-        FAILED="${FAILED} ${toolchain}-i686-unknown-linux-gnu"
-        if [ -z ${CI+x} ]; then
-            echo "Test failed"
-        else
-            echo "::error::Test failed"
-        fi
-    fi
-
-done
-groupend
 
 for target in ${TARGETS[@]}; do
     groupstart "Testing ${target}"

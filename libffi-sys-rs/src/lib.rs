@@ -160,6 +160,11 @@ pub struct ffi_cif {
     pub riscv_nfixedargs: c_uint,
     #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
     pub riscv_unused: c_uint,
+
+    // libffi/src/sparc/ffitarget.h
+    // # define FFI_EXTRA_CIF_FIELDS  unsigned int nfixedargs
+    #[cfg(target_arch = "sparc64")]
+    pub nfixedargs: c_uint,
 }
 
 impl Default for ffi_cif {

@@ -102,6 +102,6 @@ fn main() {
     call_ascii_to_upper();
 
     // Unwinding panics fail on these platforms. See https://github.com/emiltayl/libffi-rs/issues/28
-    #[cfg(not(any(target_arch = "arm", target_arch = "riscv64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "riscv64", target_arch = "sparc64")))]
     catch_extern_panic();
 }

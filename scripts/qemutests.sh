@@ -46,7 +46,11 @@ run_command_noexit() {
 
 # It is ugly setting global variables like this, but it is too tempting...
 set_globals() {
-    if [ "$1" == "powerpc64-unknown-linux-gnu" ]; then
+    if [ "$1" == "armv7-unknown-linux-gnueabihf" ]; then
+        GCC_ARCH=arm
+        QEMU_ARCH=arm
+        ABI=gnueabihf
+    elif [ "$1" == "powerpc64-unknown-linux-gnu" ]; then
         GCC_ARCH=powerpc64
         QEMU_ARCH=ppc64
         ABI=gnu
@@ -54,10 +58,6 @@ set_globals() {
         GCC_ARCH=powerpc64le
         QEMU_ARCH=ppc64le
         ABI=gnu
-    elif [ "$1" == "armv7-unknown-linux-gnueabihf" ]; then
-        GCC_ARCH=arm
-        QEMU_ARCH=arm
-        ABI=gnueabihf
     elif [ "$1" == "riscv64gc-unknown-linux-gnu" ]; then
         GCC_ARCH=riscv64
         QEMU_ARCH=riscv64
@@ -66,19 +66,22 @@ set_globals() {
         GCC_ARCH=s390x
         QEMU_ARCH=s390x
         ABI=gnu
+    elif [ "$1" = "sparc64-unknown-linux-gnu" ]; then
+        GCC_ARCH=sparc64
+        QEMU_ARCH=sparc64
+        ABI=gnu
     fi
 }
 
 FAILED=""
 GCC_VERSION=$(gcc --version | grep -oE -m 1 '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | cut -d . -f 1)
-TARGETS=("powerpc64le-unknown-linux-gnu" "powerpc64-unknown-linux-gnu " "armv7-unknown-linux-gnueabihf" "riscv64gc-unknown-linux-gnu" "s390x-unknown-linux-gnu")
+TARGETS=("armv7-unknown-linux-gnueabihf" "powerpc64le-unknown-linux-gnu" "powerpc64-unknown-linux-gnu " "riscv64gc-unknown-linux-gnu" "s390x-unknown-linux-gnu" "sparc64-unknown-linux-gnu")
 TOOLCHAINS=("1.85.0" "stable" "nightly")
 export CARGO_TERM_COLOR=always
 
 if [ "${1}" = "SETUP" ]; then
     groupstart "Setting up dependencies"
 
-    # We will run tests on i686-unknown-linux-gnu as well, but not using qemu
     APT_TO_INSTALL="qemu-user libffi-dev"
     RUSTUP_TARGETS_TO_ADD=""
     for target in ${TARGETS[@]}; do

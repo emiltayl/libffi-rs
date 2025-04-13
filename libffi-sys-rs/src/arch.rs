@@ -347,45 +347,20 @@ mod s390x {
 #[cfg(target_arch = "s390x")]
 pub use s390x::*;
 
-/// From libffi:src/mips/ffitarget.h
-/// See: <https://github.com/libffi/libffi/blob/4cb776bc8075332d2f3e59f51785d621fcda48f6/src/mips/ffitarget.h>
-mod mips_family {
-    mod common {
-        use crate::ffi_abi;
-        pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
-        pub const ffi_abi_FFI_O32: ffi_abi = 1;
-        pub const ffi_abi_FFI_N32: ffi_abi = 2;
-        pub const ffi_abi_FFI_N64: ffi_abi = 3;
-        pub const ffi_abi_FFI_O32_SOFT_FLOAT: ffi_abi = 4;
-        pub const ffi_abi_FFI_N32_SOFT_FLOAT: ffi_abi = 5;
-        pub const ffi_abi_FFI_N64_SOFT_FLOAT: ffi_abi = 6;
-        pub const ffi_abi_FFI_LAST_ABI: ffi_abi = 7;
+/// From libffi:src/sparc/ffitarget.h
+/// See <https://github.com/libffi/libffi/blob/bfb5b005a08239c751db667f68a67aeb72a9b9ff/src/sparc/ffitarget.h#L47>
+mod sparc64 {
+    use crate::ffi_abi;
 
-        pub const FFI_CLOSURES: u32 = 1;
-        pub const FFI_GO_CLOSURES: u32 = 1;
-        pub const FFI_NATIVE_RAW_ABI: u32 = 0;
-    }
+    pub const ffi_abi_FFI_FIRST_ABI: ffi_abi = 0;
+    pub const ffi_abi_FFI_V9: ffi_abi = 1;
+    pub const ffi_abi_LAST_ABI: ffi_abi = 2;
+    pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_V9;
 
-    pub mod mips {
-        pub use super::common::*;
-        use crate::ffi_abi;
-
-        pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_O32;
-
-        pub const FFI_TRAMPOLINE_SIZE: usize = 20;
-    }
-
-    pub mod mips64 {
-        pub use super::common::*;
-        use crate::ffi_abi;
-
-        pub const ffi_abi_FFI_DEFAULT_ABI: ffi_abi = ffi_abi_FFI_N64;
-
-        pub const FFI_TRAMPOLINE_SIZE: usize = 56;
-    }
+    pub const FFI_GO_CLOSURES: u32 = 1;
+    pub const FFI_TRAMPOLINE_SIZE: usize = 24;
+    pub const FFI_NATIVE_RAW_API: u32 = 0;
 }
 
-#[cfg(any(target_arch = "mips", target_arch = "mips32r6"))]
-pub use mips_family::mips::*;
-#[cfg(any(target_arch = "mips64", target_arch = "mips64r6"))]
-pub use mips_family::mips64::*;
+#[cfg(target_arch = "sparc64")]
+pub use sparc64::*;

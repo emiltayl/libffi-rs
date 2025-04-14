@@ -59,14 +59,14 @@ jobs:
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           C:\msys64\usr\bin\env MSYS2_PATH_TYPE=inherit MSYSTEM=mingw64 CHERE_INVOKING=enabled_from_arguments /usr/bin/bash -lc "cd libffi-sys-rs/libffi && ./configure --build x86_64-pc-msys --target x86_64-pc-msys --host x86_64-pc-msys --disable-dependency-tracking --with-pic --disable-shared --disable-docs CC=""$(pwd)/msvcc.sh -m64"" CXX=""$(pwd)/msvcc.sh -m64"" CPP=""cl.exe -nologo -EP"" CXXCPP=""cl.exe -nologo -EP"""
           COPY /Y libffi-sys-rs\libffi\x86_64-pc-msys\include\ffi.h libffi-sys-rs\include\msvc\x86_64\ffi.h
-          COPY /Y libffi-sys-rs\libffi\x86_64-pc-msys\include\ffitarget.h libffi-sys-rs\include\msvc\x86_64\ffitarget.h
+          COPY /Y libffi-sys-rs\libffi\x86_64-pc-msys\fficonfig.h libffi-sys-rs\include\msvc\x86_64\fficonfig.h
       - name: Generate 32-bit headers
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x86
           C:\msys64\usr\bin\env MSYS2_PATH_TYPE=inherit MSYSTEM=mingw32 CHERE_INVOKING=enabled_from_arguments /usr/bin/bash -lc "cd libffi-sys-rs/libffi && ./configure --build i686-pc-msys --target i686-pc-msys --host i686-pc-msys --disable-dependency-tracking --with-pic --disable-shared --disable-docs CC=""$(pwd)/msvcc.sh"" CXX=""$(pwd)/msvcc.sh"" CPP=""cl.exe -nologo -EP"" CXXCPP=""cl.exe -nologo -EP"""
           COPY /Y libffi-sys-rs\libffi\i686-pc-msys\include\ffi.h libffi-sys-rs\include\msvc\x86\ffi.h
-          COPY /Y libffi-sys-rs\libffi\i686-pc-msys\include\ffitarget.h libffi-sys-rs\include\msvc\x86\ffitarget.h
+          COPY /Y libffi-sys-rs\libffi\i686-pc-msys\fficonfig.h libffi-sys-rs\include\msvc\x86\fficonfig.h
       - name: Commit changes to git
         continue-on-error: true
         run: |

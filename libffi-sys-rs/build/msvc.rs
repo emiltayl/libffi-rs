@@ -2,11 +2,11 @@ use std::{env, fs};
 
 use crate::run_command;
 
-const INCLUDE_DIRS: &[&str] = &["libffi", "libffi/include", "include/msvc"];
+const INCLUDE_DIRS: &[&str] = &["libffi", "libffi/include"];
 
 // libffi expects us to include the same folder in case of x86 and x86_64 architectures
-const INCLUDE_DIRS_X86: &[&str] = &["libffi/src/x86"];
-const INCLUDE_DIRS_X86_64: &[&str] = &["libffi/src/x86"];
+const INCLUDE_DIRS_X86: &[&str] = &["libffi/src/x86", "include/msvc/x86"];
+const INCLUDE_DIRS_X86_64: &[&str] = &["libffi/src/x86", "include/msvc/x86_64"];
 const INCLUDE_DIRS_AARCH64: &[&str] = &["libffi/src/aarch64"];
 
 const BUILD_FILES: &[&str] = &[
@@ -17,7 +17,7 @@ const BUILD_FILES: &[&str] = &[
     "libffi/src/types.c",
 ];
 const BUILD_FILES_X86: &[&str] = &["libffi/src/x86/ffi.c"];
-const BUILD_FILES_X86_64: &[&str] = &["libffi/src/x86/ffi.c", "libffi/src/x86/ffiw64.c"];
+const BUILD_FILES_X86_64: &[&str] = &["libffi/src/x86/ffiw64.c"];
 const BUILD_FILES_AARCH64: &[&str] = &["libffi/src/aarch64/ffi.c"];
 
 fn unsupported(arch: &str) -> ! {

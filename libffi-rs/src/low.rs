@@ -148,7 +148,7 @@ pub mod types {
     #[cfg(feature = "complex")]
     #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     pub use crate::raw::ffi_type_complex_longdouble as complex_longdouble;
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     pub use crate::raw::ffi_type_longdouble as longdouble;
     #[cfg(feature = "complex")]
     #[cfg(not(target_env = "msvc"))]

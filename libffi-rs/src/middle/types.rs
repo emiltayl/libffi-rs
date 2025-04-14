@@ -16,10 +16,10 @@ use alloc::boxed::Box;
 mod imports {
     #[cfg(all(
         feature = "complex",
-        not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+        not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc"))
     ))]
     pub use super::miri::complex_longdouble;
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     pub use super::miri::longdouble;
     #[cfg(all(feature = "complex", not(target_env = "msvc")))]
     pub use super::miri::{complex_double, complex_float};
@@ -32,10 +32,10 @@ mod imports {
 mod imports {
     #[cfg(all(
         feature = "complex",
-        not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+        not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc"))
     ))]
     pub use crate::low::types::complex_longdouble;
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     pub use crate::low::types::longdouble;
     #[cfg(all(feature = "complex", not(target_env = "msvc")))]
     pub use crate::low::types::{complex_double, complex_float};
@@ -82,7 +82,7 @@ pub enum Type {
     /// Represents a pointer
     Pointer,
     /// Represents a `long double`. Not available for ARM.
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     LongDouble,
     /// Returns the C `_Complex float` type.
     ///
@@ -102,7 +102,7 @@ pub enum Type {
     /// msvc or for ARM.
     #[cfg(all(
         feature = "complex",
-        not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+        not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc"))
     ))]
     ComplexLongDouble,
     /// Represents a `repr(C)` structure.
@@ -258,7 +258,7 @@ impl Type {
     }
 
     /// Returns the C `long double` (extended-precision floating point) type.
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     #[deprecated = "Refer to `Type::LongDouble` directly. This function will be removed in a future version."]
     pub const fn longdouble() -> Self {
         Self::LongDouble
@@ -290,7 +290,7 @@ impl Type {
     /// msvc or the arm arch.
     #[cfg(all(
         feature = "complex",
-        not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+        not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc"))
     ))]
     #[deprecated = "Refer to `Type::ComplexLongDouble` directly. This function will be removed in a future version."]
     pub const fn complex_longdouble() -> Self {
@@ -332,7 +332,7 @@ impl Type {
             Type::Pointer => RawType(&raw mut pointer),
 
             // LongDoubles are allocated in its own block to prevent potential race conditions.
-            #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+            #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
             Type::LongDouble => {
                 // SAFETY: When using the `middle` module, `longdouble` will never be overwritten.
                 // Care needs to be taken if `low` and `middle` modules are mixed on PowerPC.
@@ -369,7 +369,7 @@ impl Type {
 
             #[cfg(all(
                 feature = "complex",
-                not(any(target_env = "msvc", target_arch = "arm", target_arch = "aarch64"))
+                not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc"))
             ))]
             Type::ComplexLongDouble => {
                 // SAFETY: When using the `middle` module, `complex_longdouble` will never be
@@ -590,7 +590,7 @@ mod test {
     use super::*;
     #[cfg(all(feature = "complex", not(target_env = "msvc")))]
     use crate::low::type_tag::COMPLEX;
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     use crate::low::type_tag::LONGDOUBLE;
     use crate::low::type_tag::{SINT8, SINT16, SINT32, STRUCT, UINT8, UINT16, UINT32};
 
@@ -719,7 +719,7 @@ mod test {
         let _ = format!("{struct_rawtype:?}");
     }
 
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64", target_env = "msvc")))]
     #[test]
     fn verify_longdouble_allocations() {
         let raw_type = Type::LongDouble.as_raw();

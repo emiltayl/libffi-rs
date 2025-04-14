@@ -474,9 +474,11 @@ mod test {
             });
 
             (closure.as_fn_ptr())();
+            (closure.as_fn_ptr())();
+            (closure.as_fn_ptr())();
         }
 
-        assert_eq!(n, 1);
+        assert_eq!(n, 3);
     }
 
     #[test]

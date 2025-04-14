@@ -238,8 +238,15 @@ mod test {
     use core::ffi::c_void;
     use core::mem::MaybeUninit;
 
+    use libffi_sys::ffi_abi_FFI_DEFAULT_ABI;
+
     use super::*;
-    use crate::low::ffi_cif;
+    use crate::low::{CodePtr, ffi_cif};
+    use crate::middle::Arg;
+
+    unsafe extern "C" fn add_two_usizes(a: usize, b: usize) -> usize {
+        a + b
+    }
 
     unsafe extern "C" fn ref_lambda_callback<F: Fn(u64, u64) -> u64>(
         _cif: &ffi_cif,
@@ -273,6 +280,31 @@ mod test {
 
             (*result).write((*userdata)(arg_1, arg_2));
         }
+    }
+
+    #[test]
+    fn test_add_two_usizes() {
+        let a: usize = 0xABCD_EF01;
+        let b: usize = 0x1234_5678;
+
+        let cif = Builder::new()
+            .arg(Type::Usize)
+            .arg(Type::Usize)
+            .res(Some(Type::Usize))
+            .abi(ffi_abi_FFI_DEFAULT_ABI)
+            .into_cif();
+
+        // SAFETY:
+        // `add_two_usizes` is an `extern "C"` function that accepts two `usize`s and returns one
+        // `usize`.
+        let result: usize = unsafe {
+            cif.call(
+                CodePtr(add_two_usizes as *mut _),
+                &[Arg::borrowed(&a), Arg::borrowed(&b)],
+            )
+        };
+
+        assert_eq!(a + b, result);
     }
 
     #[test]

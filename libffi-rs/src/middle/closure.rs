@@ -17,7 +17,7 @@ use crate::low::{
     prep_closure_unwindable_mut,
 };
 use crate::middle::{
-    Callback, CallbackMut, CallbackUnwindable, CallbackUnwindableMut, Cif, CodePtr,
+    Callback, CallbackMut, CallbackUnwindable, CallbackUnwindableMut, Cif, CodePtr, Error,
 };
 
 /// Represents a closure callable from C that borrows `userdata`.
@@ -58,9 +58,11 @@ use crate::middle::{
 ///     }
 /// }
 ///
-/// let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64));
+/// # use libffi::middle::Error;
+/// # fn main() -> Result<(), Error> {
+/// let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64))?;
 /// let lambda = |x: u64, y: u64| x + y;
-/// let closure = Closure::new(cif, lambda_callback, &lambda);
+/// let closure = Closure::new(cif, lambda_callback, &lambda)?;
 ///
 /// // If calling lambda callback with valid input parameters was potentially unsafe, `fun` wouild
 /// // have to be typed as `&unsafe extern "C"...`.
@@ -68,6 +70,8 @@ use crate::middle::{
 ///
 /// assert_eq!(11, fun(5, 6));
 /// assert_eq!(12, fun(5, 7));
+/// #   Ok(())
+/// # }
 /// ```
 #[derive(Debug)]
 pub struct Closure<'closure> {
@@ -87,33 +91,40 @@ impl<'closure> Closure<'closure> {
     /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
     ///   is called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
     /// The new closure.
-    pub fn new<U, R>(cif: Cif, callback: Callback<U, R>, userdata: &'closure U) -> Self {
+    pub fn new<U, R>(
+        cif: Cif,
+        callback: Callback<U, R>,
+        userdata: &'closure U,
+    ) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
         unsafe {
-            prep_closure(alloc, cif.cif, callback, ptr::from_ref(userdata), code).unwrap();
+            prep_closure(alloc, cif.cif, callback, ptr::from_ref(userdata), code)?;
         }
 
-        Closure {
+        Ok(Closure {
             _cif: cif,
             alloc,
             code,
             _marker: PhantomData,
-        }
+        })
     }
 
     /// Creates a new closure that borrows `userdata` immutably. Use this if you need to support
@@ -126,12 +137,13 @@ impl<'closure> Closure<'closure> {
     /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
     ///   is called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
@@ -140,24 +152,25 @@ impl<'closure> Closure<'closure> {
         cif: Cif,
         callback: CallbackUnwindable<U, R>,
         userdata: &'closure U,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
         unsafe {
-            prep_closure_unwindable(alloc, cif.cif, callback, ptr::from_ref(userdata), code)
-                .unwrap();
+            prep_closure_unwindable(alloc, cif.cif, callback, ptr::from_ref(userdata), code)?;
         }
 
-        Closure {
+        Ok(Closure {
             _cif: cif,
             alloc,
             code,
             _marker: PhantomData,
-        }
+        })
     }
 
     /// Creates a new closure that borrows a mutable reference to `userdata`.
@@ -169,33 +182,40 @@ impl<'closure> Closure<'closure> {
     /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
     ///   is called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function will return an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
     /// The new closure.
-    pub fn new_mut<U, R>(cif: Cif, callback: CallbackMut<U, R>, userdata: &'closure mut U) -> Self {
+    pub fn new_mut<U, R>(
+        cif: Cif,
+        callback: CallbackMut<U, R>,
+        userdata: &'closure mut U,
+    ) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
         unsafe {
-            prep_closure_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code).unwrap();
+            prep_closure_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code)?;
         }
 
-        Closure {
+        Ok(Closure {
             _cif: cif,
             alloc,
             code,
             _marker: PhantomData,
-        }
+        })
     }
 
     /// Creates a new closure that borrows a mutable reference to `userdata`. Use this if you need
@@ -208,12 +228,13 @@ impl<'closure> Closure<'closure> {
     /// - `userdata` — the pointer to pass to `callback` along with the arguments when the closure
     ///   is called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function will return an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
@@ -222,24 +243,25 @@ impl<'closure> Closure<'closure> {
         cif: Cif,
         callback: CallbackUnwindableMut<U, R>,
         userdata: &'closure mut U,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
         unsafe {
-            prep_closure_unwindable_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code)
-                .unwrap();
+            prep_closure_unwindable_mut(alloc, cif.cif, callback, ptr::from_mut(userdata), code)?;
         }
 
-        Closure {
+        Ok(Closure {
             _cif: cif,
             alloc,
             code,
             _marker: PhantomData,
-        }
+        })
     }
 
     /// Obtains the callable code pointer for a closure.
@@ -313,35 +335,38 @@ impl<U> ClosureOwned<U> {
     /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
     ///   called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
     /// The new closure.
-    pub fn new<R>(cif: Cif, callback: Callback<U, R>, userdata: U) -> Self {
+    pub fn new<R>(cif: Cif, callback: Callback<U, R>, userdata: U) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         let userdata = Box::into_raw(Box::new(userdata));
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
-            prep_closure(alloc, cif.cif, callback, userdata, code).unwrap();
+            prep_closure(alloc, cif.cif, callback, userdata, code)?;
         }
 
-        ClosureOwned {
+        Ok(ClosureOwned {
             alloc,
             code,
             _cif: cif,
             userdata,
-        }
+        })
     }
 
     /// Creates a new closure with owned userdata and a callback that accesses `userdata` immutably.
@@ -354,35 +379,42 @@ impl<U> ClosureOwned<U> {
     /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
     ///   called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function will return an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
     /// The new closure.
-    pub fn new_unwindable<R>(cif: Cif, callback: CallbackUnwindable<U, R>, userdata: U) -> Self {
+    pub fn new_unwindable<R>(
+        cif: Cif,
+        callback: CallbackUnwindable<U, R>,
+        userdata: U,
+    ) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         let userdata = Box::into_raw(Box::new(userdata));
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
-            prep_closure_unwindable(alloc, cif.cif, callback, userdata, code).unwrap();
+            prep_closure_unwindable(alloc, cif.cif, callback, userdata, code)?;
         }
 
-        ClosureOwned {
+        Ok(ClosureOwned {
             alloc,
             code,
             _cif: cif,
             userdata,
-        }
+        })
     }
 
     /// Creates a new closure with owned userdata and a callback that can mutate `userdata`.
@@ -394,35 +426,38 @@ impl<U> ClosureOwned<U> {
     /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
     ///   called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
     /// The new closure.
-    pub fn new_mut<R>(cif: Cif, callback: CallbackMut<U, R>, userdata: U) -> Self {
+    pub fn new_mut<R>(cif: Cif, callback: CallbackMut<U, R>, userdata: U) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         let userdata = Box::into_raw(Box::new(userdata));
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
-            prep_closure_mut(alloc, cif.cif, callback, userdata, code).unwrap();
+            prep_closure_mut(alloc, cif.cif, callback, userdata, code)?;
         }
 
-        ClosureOwned {
+        Ok(ClosureOwned {
             alloc,
             code,
             _cif: cif,
             userdata,
-        }
+        })
     }
 
     /// Creates a new closure with owned userdata and a callback that can mutate `userdata`. Use
@@ -435,12 +470,13 @@ impl<U> ClosureOwned<U> {
     /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
     ///   called
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi was unable to allocate memory in `ffi_closure_alloc`.
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
     ///
-    /// It may also panic if `low::prep_closure_mut` fails to create the CIF. This is likely caused
-    /// by a bug in this crate and should be reported.
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
     ///
     /// # Result
     ///
@@ -449,25 +485,27 @@ impl<U> ClosureOwned<U> {
         cif: Cif,
         callback: CallbackUnwindableMut<U, R>,
         userdata: U,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let (alloc, code) = closure_alloc();
 
-        assert!(!alloc.is_null(), "closure_alloc: returned null");
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
 
         let userdata = Box::into_raw(Box::new(userdata));
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues
         // in the `low::prep_closure_mut` call.
         unsafe {
-            prep_closure_unwindable_mut(alloc, cif.cif, callback, userdata, code).unwrap();
+            prep_closure_unwindable_mut(alloc, cif.cif, callback, userdata, code)?;
         }
 
-        ClosureOwned {
+        Ok(ClosureOwned {
             alloc,
             code,
             _cif: cif,
             userdata,
-        }
+        })
     }
 
     /// Obtains the callable code pointer for a closure.
@@ -505,9 +543,9 @@ mod test {
 
     #[test]
     fn closure() {
-        let cif = Cif::new(&[Type::U64], Some(Type::U64));
+        let cif = Cif::new(&[Type::U64], Some(Type::U64)).unwrap();
         let env: u64 = 5;
-        let closure = Closure::new(cif, callback, &env);
+        let closure = Closure::new(cif, callback, &env).unwrap();
 
         // SAFETY: `callback` expects one u64 and returns a u64.
         let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
@@ -533,9 +571,9 @@ mod test {
 
     #[test]
     fn rust_lambda() {
-        let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64));
+        let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64)).unwrap();
         let env = |x: u64, y: u64| x + y;
-        let closure = Closure::new(cif, callback2, &env);
+        let closure = Closure::new(cif, callback2, &env).unwrap();
 
         // SAFETY: `callback2` expects two u64 arguments and returns a u64.
         let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
@@ -568,10 +606,10 @@ mod test {
 
     #[test]
     fn test_closures_unwind() {
-        let cif = Cif::new(&[], None);
+        let cif = Cif::new(&[], None).unwrap();
 
         let closure_1 = std::panic::catch_unwind(|| {
-            let closure = Closure::new_unwindable(cif.clone(), do_panic, &());
+            let closure = Closure::new_unwindable(cif.clone(), do_panic, &()).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
             let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
@@ -581,7 +619,8 @@ mod test {
 
         let closure_2 = std::panic::catch_unwind(|| {
             let mut void = ();
-            let closure = Closure::new_unwindable_mut(cif.clone(), do_panic_mut, &mut void);
+            let closure =
+                Closure::new_unwindable_mut(cif.clone(), do_panic_mut, &mut void).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
             let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
@@ -590,7 +629,7 @@ mod test {
         assert!(closure_2.is_err());
 
         let closure_3 = std::panic::catch_unwind(|| {
-            let closure = ClosureOwned::new_unwindable(cif.clone(), do_panic, ());
+            let closure = ClosureOwned::new_unwindable(cif.clone(), do_panic, ()).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
             let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
@@ -599,7 +638,7 @@ mod test {
         assert!(closure_3.is_err());
 
         let closure_4 = std::panic::catch_unwind(|| {
-            let closure = ClosureOwned::new_unwindable_mut(cif.clone(), do_panic_mut, ());
+            let closure = ClosureOwned::new_unwindable_mut(cif.clone(), do_panic_mut, ()).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
             let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
@@ -646,7 +685,7 @@ mod miritest {
 
     #[test]
     fn create_closures() {
-        let cif = Cif::new(&[], None);
+        let cif = Cif::new(&[], None).unwrap();
         let cif2 = cif.clone();
 
         let state = 0u32;
@@ -659,7 +698,7 @@ mod miritest {
 #[cfg(miri)]
 mod miri {
     use super::*;
-    use crate::low::{RawCallback, Result, ffi_cif};
+    use crate::low::{RawCallback, ffi_cif};
 
     pub(super) fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
         let closure = Box::into_raw(Box::new(ffi_closure::default()));
@@ -678,7 +717,7 @@ mod miri {
         callback: Callback<U, R>,
         userdata: *const U,
         _code: CodePtr,
-    ) -> Result<()> {
+    ) -> Result<(), crate::low::Error> {
         // SAFETY: This function assumes all pointers are valid.
         unsafe {
             (*closure).cif = cif;
@@ -697,7 +736,7 @@ mod miri {
         callback: CallbackUnwindable<U, R>,
         userdata: *const U,
         _code: CodePtr,
-    ) -> Result<()> {
+    ) -> Result<(), crate::low::Error> {
         // SAFETY: This function assumes all pointers are valid.
         unsafe {
             (*closure).cif = cif;
@@ -715,7 +754,7 @@ mod miri {
         callback: CallbackMut<U, R>,
         userdata: *mut U,
         _code: CodePtr,
-    ) -> Result<()> {
+    ) -> Result<(), crate::low::Error> {
         // SAFETY: This function assumes all pointers are valid.
         unsafe {
             (*closure).cif = cif;
@@ -734,7 +773,7 @@ mod miri {
         callback: CallbackUnwindableMut<U, R>,
         userdata: *mut U,
         _code: CodePtr,
-    ) -> Result<()> {
+    ) -> Result<(), crate::low::Error> {
         // SAFETY: This function assumes all pointers are valid.
         unsafe {
             (*closure).cif = cif;

@@ -7,7 +7,7 @@ use core::sync::atomic::AtomicBool;
 
 use super::{Closurable, ClosureMutable};
 use crate::high::{FfiArgs, FfiRet};
-use crate::middle::{Cif, ClosureOwned};
+use crate::middle::{Cif, ClosureOwned, Error};
 
 /// `Closure` accepts a Rust closure and creates a function pointer so that a function pointer to
 /// the closure can be sent across FFI boundaries.
@@ -30,42 +30,46 @@ where
     /// Creates a new [`Closure`]. Closures created with [`Closure::new`] aborts if the closure, or
     /// code called by the closure, panics.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi is unable to allocate memory for the closure.
+    /// This function returns an error if libffi is unable to allocate memory for the closure.
     #[inline]
-    pub fn new(func: FN) -> Self {
+    pub fn new(func: FN) -> Result<Self, Error> {
         let cif = Cif::new(
             <ARGS as FfiArgs>::as_type_array().as_ref(),
             <RET as FfiRet>::as_ffi_return_type(),
-        );
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
 
-        let inner = ClosureOwned::new(cif, FN::call_closure, func);
+        let inner = ClosureOwned::new(cif, FN::call_closure, func)?;
 
-        Self {
+        Ok(Self {
             inner,
             _phantom: PhantomData,
-        }
+        })
     }
 
     /// Creates a new [`Closure`]. Panics in closures created with [`Closure::new_unwindable`] can
     /// be caught with [`std::panic::catch_unwind`].
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi is unable to allocate memory for the closure.
-    pub fn new_unwindable(func: FN) -> Self {
+    /// This function returns an error if libffi is unable to allocate memory for the closure.
+    pub fn new_unwindable(func: FN) -> Result<Self, Error> {
         let cif = Cif::new(
             <ARGS as FfiArgs>::as_type_array().as_ref(),
             <RET as FfiRet>::as_ffi_return_type(),
-        );
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
 
-        let inner = ClosureOwned::new_unwindable(cif, FN::call_closure_unwindable, func);
+        let inner = ClosureOwned::new_unwindable(cif, FN::call_closure_unwindable, func)?;
 
-        Self {
+        Ok(Self {
             inner,
             _phantom: PhantomData,
-        }
+        })
     }
 
     /// Returns a function pointer that can be used to execute the closure. Note that the function
@@ -131,46 +135,50 @@ where
     /// If multiple concurrent calls is needed, it is recommended to use a `Closure` which calls a
     /// non-mut `Fn` and accesses shared data through a synchronization primitive such as a `Mutex`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi is unable to allocate memory for the closure.
-    pub fn new(func: FN) -> Self {
+    /// This function returns an error if libffi is unable to allocate memory for the closure.
+    pub fn new(func: FN) -> Result<Self, Error> {
         let cif = Cif::new(
             <ARGS as FfiArgs>::as_type_array().as_ref(),
             <RET as FfiRet>::as_ffi_return_type(),
-        );
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
 
-        let inner = ClosureOwned::new_mut(cif, FN::call_closure, (func, AtomicBool::new(false)));
+        let inner = ClosureOwned::new_mut(cif, FN::call_closure, (func, AtomicBool::new(false)))?;
 
-        Self {
+        Ok(Self {
             inner,
             _phantom: PhantomData,
-        }
+        })
     }
 
     /// Creates a new [`ClosureMut`] with unwinding panics. This is only available for testing.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if libffi is unable to allocate memory for the closure.
+    /// This function returns an error if libffi is unable to allocate memory for the closure.
     #[cfg(test)]
     #[doc(hidden)]
-    pub fn new_unwindable(func: FN) -> Self {
+    pub fn new_unwindable(func: FN) -> Result<Self, Error> {
         let cif = Cif::new(
             <ARGS as FfiArgs>::as_type_array().as_ref(),
             <RET as FfiRet>::as_ffi_return_type(),
-        );
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
 
         let inner = ClosureOwned::new_unwindable_mut(
             cif,
             FN::call_closure_unwindable,
             (func, AtomicBool::new(false)),
-        );
+        )?;
 
-        Self {
+        Ok(Self {
             inner,
             _phantom: PhantomData,
-        }
+        })
     }
 
     /// Returns a function pointer that can be used to execute the closure. Note that the function
@@ -256,11 +264,11 @@ mod test {
     macro_rules! test_identity_closures {
         ($ty:ty = $val:expr) => {{
             let original: $ty = $val;
-            let closure = Closure::new(|val: $ty| val);
+            let closure = Closure::new(|val: $ty| val).unwrap();
             assert_eq!((closure.as_fn_ptr())($val), original);
 
             let original: $ty = $val;
-            let closure = ClosureMut::new(|val: $ty| val);
+            let closure = ClosureMut::new(|val: $ty| val).unwrap();
             assert_eq!((closure.as_fn_ptr())($val), original);
         }};
     }
@@ -310,7 +318,7 @@ mod test {
                 clippy::unused_unit,
                 reason = "`Closure` is unable to find the correct trait implementation without `-> ()`"
             )]
-            let closure = Closure::new_unwindable(|| -> () { panic!("Test") });
+            let closure = Closure::new_unwindable(|| -> () { panic!("Test") }).unwrap();
 
             (closure.as_fn_ptr())();
         });
@@ -331,10 +339,10 @@ mod test {
     macro_rules! generate_closure_test {
         () => {
             {
-                let closure = Closure::new_unwindable(|| {});
+                let closure = Closure::new_unwindable(|| {}).unwrap();
                 (closure.as_fn_ptr())();
 
-                let closuremut = ClosureMut::new_unwindable(|| {});
+                let closuremut = ClosureMut::new_unwindable(|| {}).unwrap();
                 (closuremut.as_fn_ptr())();
             }
         };
@@ -342,11 +350,11 @@ mod test {
         // Output type needs to be put first to allow for an arbitrary number of arguments.
         ($ty:ty = $val:expr => ()) => {
             {
-                let closure = Closure::new_unwindable(|| -> $ty {$val});
+                let closure = Closure::new_unwindable(|| -> $ty {$val}).unwrap();
                 let result = (closure.as_fn_ptr())();
                 assert_eq!(result, $val);
 
-                let closuremut = ClosureMut::new_unwindable(|| -> $ty {$val});
+                let closuremut = ClosureMut::new_unwindable(|| -> $ty {$val}).unwrap();
                 let result = (closuremut.as_fn_ptr())();
                 assert_eq!(result, $val);
             }
@@ -358,12 +366,12 @@ mod test {
             {
                 let closure = Closure::new_unwindable(|$name: $ty| {
                     assert_eq!($name, $val);
-                });
+                }).unwrap();
                 (closure.as_fn_ptr())($val);
 
                 let closuremut = ClosureMut::new_unwindable(|$name: $ty| {
                     assert_eq!($name, $val);
-                });
+                }).unwrap();
                 (closuremut.as_fn_ptr())($val);
             }
 
@@ -375,14 +383,14 @@ mod test {
                 let closure = Closure::new_unwindable(|$name: $ty| -> $retty {
                     assert_eq!($name, $val);
                     $retval
-                });
+                }).unwrap();
                 let result = (closure.as_fn_ptr())($val);
                 assert_eq!(result, $retval);
 
                 let closuremut = ClosureMut::new_unwindable(|$name: $ty| -> $retty {
                     assert_eq!($name, $val);
                     $retval
-                });
+                }).unwrap();
                 let result = (closuremut.as_fn_ptr())($val);
                 assert_eq!(result, $retval);
             }
@@ -395,13 +403,13 @@ mod test {
                 let closure = Closure::new_unwindable(|$name: $ty, $($restname: $restty),+| {
                     assert_eq!($name, $val);
                     $(assert_eq!($restname, $restval);)+
-                });
+                }).unwrap();
                 (closure.as_fn_ptr())($val, $($restval),+);
 
                 let closuremut = ClosureMut::new_unwindable(|$name: $ty, $($restname: $restty),+| {
                     assert_eq!($name, $val);
                     $(assert_eq!($restname, $restval);)+
-                });
+                }).unwrap();
                 (closuremut.as_fn_ptr())($val, $($restval),+);
             }
 
@@ -414,7 +422,7 @@ mod test {
                     assert_eq!($name, $val);
                     $(assert_eq!($restname, $restval);)+
                     $retval
-                });
+                }).unwrap();
                 let result = (closure.as_fn_ptr())($val, $($restval),+);
                 assert_eq!(result, $retval);
 
@@ -422,7 +430,7 @@ mod test {
                     assert_eq!($name, $val);
                     $(assert_eq!($restname, $restval);)+
                     $retval
-                });
+                }).unwrap();
                 let result = (closuremut.as_fn_ptr())($val, $($restval),+);
                 assert_eq!(result, $retval);
             }
@@ -471,7 +479,8 @@ mod test {
         {
             let closure = ClosureMut::new(|| {
                 n += 1;
-            });
+            })
+            .unwrap();
 
             (closure.as_fn_ptr())();
             (closure.as_fn_ptr())();
@@ -502,7 +511,8 @@ mod test {
                 start.elapsed() <= Duration::from_secs(30),
                 "Thread timed out."
             );
-        });
+        })
+        .unwrap();
 
         std::thread::scope(|s| {
             // The first thread will set `lock` to true and wait for either `complete` or to time
@@ -601,7 +611,7 @@ mod miritest {
     macro_rules! generate_miri_closure_test_for_ty {
         ($closurety:ty) => {
             {
-                let closure = <$closurety>::new_unwindable(|| {});
+                let closure = <$closurety>::new_unwindable(|| {}).unwrap();
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let fun = (*closure.inner.alloc).fun.unwrap();
@@ -618,7 +628,7 @@ mod miritest {
         // Output type needs to be put first to allow for an arbitrary number of arguments.
         ($closurety:ty, $ty:ty = $val:expr => ()) => {
             {
-                let closure = <$closurety>::new_unwindable(|| -> $ty {$val});
+                let closure = <$closurety>::new_unwindable(|| -> $ty {$val}).unwrap();
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let fun = (*closure.inner.alloc).fun.unwrap();
@@ -656,7 +666,7 @@ mod miritest {
             {
                 let closure = <$closurety>::new_unwindable(|$name: $ty| {
                     assert_eq!($name, $val);
-                });
+                }).unwrap();
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let mut $name: $ty = $val;
@@ -680,7 +690,7 @@ mod miritest {
                 let closure = <$closurety>::new_unwindable(|$name: $ty| -> $retty {
                     assert_eq!($name, $val);
                     $retval
-                });
+                }).unwrap();
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let mut $name: $ty = $val;
@@ -721,7 +731,7 @@ mod miritest {
                 let closure = <$closurety>::new_unwindable(|$name: $ty, $($restname: $restty),+| {
                     assert_eq!($name, $val);
                     $(assert_eq!($restname, $restval);)+
-                });
+                }).unwrap();
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let mut $name: $ty = $val;
@@ -750,7 +760,7 @@ mod miritest {
                     assert_eq!($name, $val);
                     $(assert_eq!($restname, $restval);)+
                     $retval
-                });
+                }).unwrap();
                 // SAFETY: `Closure::new` should initialize well-formed struct for the closure.
                 unsafe {
                     let mut $name: $ty = $val;

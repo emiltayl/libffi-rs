@@ -39,6 +39,32 @@ pub use types::Type;
 mod builder;
 pub use builder::Builder;
 
+/// Errors that may be returned by functions in the `middle` module.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Error {
+    /// Returned if allocating a closure failed.
+    AllocFailed,
+    /// An error from the underlying libffi library.
+    Libffi(crate::low::Error),
+    /// Returned if [`Cif::call`] is called with fewer or more arguments than the number of
+    /// arguments provided when creating the `Cif`.
+    InvalidArgCount {
+        /// Number of arguments given when creating the `Cif`.
+        expected: usize,
+        /// Number of arguments provided to [`Cif::call`].
+        provided: usize,
+    },
+    /// Returned if the number of arguments provided when creating a Cif exceeds `u32::MAX`.
+    TooManyArguments(usize),
+}
+
+impl From<crate::low::Error> for Error {
+    fn from(error: crate::low::Error) -> Self {
+        Self::Libffi(error)
+    }
+}
+
 /// Describes the calling convention and types for calling a function.
 ///
 /// This is the middle layer’s wrapping of the [`low`](crate::low) and [`raw`](crate::raw) layers’
@@ -57,16 +83,21 @@ pub use builder::Builder;
 ///
 /// use libffi::middle::{Arg, Cif, CodePtr, Type};
 ///
+/// # use libffi::middle::Error;
+/// # fn main() -> Result<(), Error> {
 /// let args = [Type::U64, Type::Pointer];
-/// let cif = Cif::new(&args, Some(Type::U64));
+/// let cif = Cif::new(&args, Some(Type::U64))?;
 ///
 /// let n: u64 = unsafe {
 ///     cif.call(
 ///         CodePtr(add as *mut _),
 ///         &[Arg::borrowed(&5u64), Arg::borrowed(&&6u64)],
 ///     )
-/// };
+/// }?;
 /// assert_eq!(11, n);
+/// #
+/// #   Ok(())
+/// # }
 /// ```
 ///
 /// [`low::ffi_cif`]: [`crate::low::ffi_cif`]
@@ -87,23 +118,24 @@ impl Cif {
     /// [`Cif`] defaults to the platform’s default calling convention; use [`Cif::new_with_abi`] to
     /// create a Cif for a given ABI.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// See [`Cif::new_with_abi`] for possible panic scenarios.
+    /// See [`Cif::new_with_abi`] for possible error scenarios.
     #[inline]
-    pub fn new(args: &[Type], result: Option<Type>) -> Self {
+    pub fn new(args: &[Type], result: Option<Type>) -> Result<Self, Error> {
         Self::new_with_abi(args, result, ffi_abi_FFI_DEFAULT_ABI)
     }
 
     /// Creates a new [`Cif`] for the given argument and result types, and ABI. A `void` return type
     /// is defined in the `Cif` if `result` is `None`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
-    /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
+    /// This function returns an error if `args` contains `u32::MAX` or more elements, or if
+    /// `low::prep_cif` fails to create the CIF. The latter is probably caused by a bug in this
+    /// crate and should be reported.
     #[inline]
-    pub fn new_with_abi(args: &[Type], result: Option<Type>, abi: FfiAbi) -> Self {
+    pub fn new_with_abi(args: &[Type], result: Option<Type>, abi: FfiAbi) -> Result<Self, Error> {
         let n_args = args.len();
 
         let args: Box<[types::RawType]> = args.iter().map(Type::as_raw).collect();
@@ -122,15 +154,16 @@ impl Cif {
             prep_cif(
                 cif,
                 abi,
-                n_args.try_into().unwrap(),
+                n_args
+                    .try_into()
+                    .map_err(|_| Error::TooManyArguments(n_args))?,
                 result.0,
                 (*args).as_mut_ptr().cast(),
             )
-        }
-        .expect("low::prep_cif");
+        }?;
 
         // Note that cif retains references to args and result, which is why we hold onto them here.
-        Cif { cif, args, result }
+        Ok(Cif { cif, args, result })
     }
 
     /// Creates a new variadic [CIF](Cif) for the given argument and result types. When calling a
@@ -147,16 +180,21 @@ impl Cif {
     /// * `result` is either `None` if the function does not return a value or `Some(Type)` with the
     ///   return type.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
-    /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
+    /// This function returns an error if `args` contains `u32::Max` or more elements, or if
+    /// `low::prep_cif` fails to create the CIF. The latter is probably caused by a bug in this
+    /// crate and should be reported.
     ///
     /// If any of the argument types are 8- or 16-bit integers, or 32-bit floats.
     ///
     /// # Examples
     /// todo
-    pub fn new_variadic<I, J>(fixed_args: I, var_args: J, result: Option<Type>) -> Self
+    pub fn new_variadic<I, J>(
+        fixed_args: I,
+        var_args: J,
+        result: Option<Type>,
+    ) -> Result<Self, Error>
     where
         I: IntoIterator,
         I::Item: Borrow<Type>,
@@ -182,10 +220,11 @@ impl Cif {
     ///   return type.
     /// * `abi` is the Abi of the target function.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
-    /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
+    /// This function returns an error if `args` contains `u32::Max` or more elements, or if
+    /// `low::prep_cif` fails to create the CIF. The latter is probably caused by a bug in this
+    /// crate and should be reported.
     ///
     /// If any of the argument types are 8- or 16-bit integers, or 32-bit floats.
     ///
@@ -196,7 +235,7 @@ impl Cif {
         var_args: J,
         result: Option<Type>,
         abi: FfiAbi,
-    ) -> Self
+    ) -> Result<Self, Error>
     where
         I: IntoIterator,
         I::Item: Borrow<Type>,
@@ -208,11 +247,17 @@ impl Cif {
             .map(|ty| ty.borrow().as_raw())
             .collect();
 
-        let n_fixed_args: u32 = args.len().try_into().unwrap();
+        let n_fixed_args: u32 = args
+            .len()
+            .try_into()
+            .map_err(|_| Error::TooManyArguments(args.len()))?;
 
         args.extend(var_args.into_iter().map(|ty| ty.borrow().as_raw()));
 
-        let n_total_args: u32 = args.len().try_into().unwrap();
+        let n_total_args: u32 = args
+            .len()
+            .try_into()
+            .map_err(|_| Error::TooManyArguments(args.len()))?;
 
         let args = args.into_boxed_slice();
         let args = Box::into_raw(args);
@@ -235,11 +280,10 @@ impl Cif {
                 result.0,
                 (*args).as_mut_ptr().cast(),
             )
-        }
-        .expect("low::prep_cif_var");
+        }?;
 
         // Note that cif retains references to args and result, which is why we hold onto them here.
-        Cif { cif, args, result }
+        Ok(Cif { cif, args, result })
     }
 
     /// Calls a function with the given arguments.
@@ -252,26 +296,32 @@ impl Cif {
     /// There is no checking that the calling convention and types in the `Cif` match the actual
     /// calling convention and types of `fun`, nor that they match the types of `args`.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function will panic if `args` does not contain exactly as many arguments as defined in
-    /// [`Cif::new`].
+    /// This function will return an error if `args` does not contain exactly as many arguments as
+    /// defined in when creating the Cif or more than `usize::MAX` arguments are provided.
     #[inline]
-    pub unsafe fn call<R>(&self, fun: CodePtr, args: &[Arg]) -> R {
+    pub unsafe fn call<R>(&self, fun: CodePtr, args: &[Arg]) -> Result<R, Error> {
         // SAFETY: `self.cif` is a pointer to `low::ffi_cif` owned and managed by `self`.
         unsafe {
-            assert_eq!(
-                (*self.cif).nargs as usize,
-                args.len(),
-                "Cif::call: passed wrong number of arguments"
-            );
+            let n_args: usize = (*self.cif)
+                .nargs
+                .try_into()
+                .map_err(|_| Error::TooManyArguments(usize::MAX))?;
+
+            if n_args != args.len() {
+                return Err(Error::InvalidArgCount {
+                    expected: n_args,
+                    provided: args.len(),
+                });
+            }
         }
 
         let mut args: Box<[*mut c_void]> = args.iter().map(Arg::as_ptr).collect();
 
         // SAFETY: This is inherently unsafe and it is up to the caller of this function to uphold
         // all required safety guarantees.
-        unsafe { call::<R>(self.cif, fun, args.as_mut_ptr().cast()) }
+        unsafe { Ok(call::<R>(self.cif, fun, args.as_mut_ptr().cast())) }
     }
 }
 
@@ -349,7 +399,7 @@ mod test {
 
     #[test]
     fn call() {
-        let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64));
+        let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64)).unwrap();
         let f = |m: i64, n: i64| -> i64 {
             // SAFETY: the cif is properly defined and `add_it`` does not perform any unsafe
             // actions.
@@ -358,6 +408,7 @@ mod test {
                     CodePtr(add_it as *mut c_void),
                     &[Arg::borrowed(&m), Arg::borrowed(&n)],
                 )
+                .unwrap()
             }
         };
 
@@ -378,7 +429,8 @@ mod test {
                 Type::U64,
             ],
             Some(Type::U64),
-        );
+        )
+        .unwrap();
         let clone_cif = cif.clone();
 
         // SAFETY: `std::slice::from_raw_parts` is used to create slices on data created in Rust
@@ -425,12 +477,14 @@ mod test {
     }
 
     #[test]
-    #[should_panic = "Cif::call: passed wrong number of arguments"]
+    #[should_panic = "called `Result::unwrap()` on an `Err` value: InvalidArgCount { expected: 2, provided: 1 }"]
     fn cif_call_panics_on_invalid_number_of_arguments() {
-        let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64));
+        let cif = Cif::new(&[Type::I64, Type::I64], Some(Type::I64)).unwrap();
         // SAFETY: This should panic before any potential unsafe action happens.
-        let _result: i64 =
-            unsafe { cif.call(CodePtr(add_it as *mut c_void), &[Arg::borrowed(&0u64)]) };
+        let _result: i64 = unsafe {
+            cif.call(CodePtr(add_it as *mut c_void), &[Arg::borrowed(&0u64)])
+                .unwrap()
+        };
     }
 
     #[repr(C)]
@@ -500,10 +554,13 @@ mod test {
 
     macro_rules! gen_identity_fn_test {
         ($fn:ident($ty:ty = $val:expr, $ffity:expr)) => {{
-            let cif = Cif::new(&[$ffity], Some($ffity));
+            let cif = Cif::new(&[$ffity], Some($ffity)).unwrap();
             let orig: $ty = $val;
             // SAFETY: It is assumed that $fn is a valid function accepting $ty and returning $ty.
-            let result: $ty = unsafe { cif.call(CodePtr($fn as *mut _), &[Arg::borrowed(&orig)]) };
+            let result: $ty = unsafe {
+                cif.call(CodePtr($fn as *mut _), &[Arg::borrowed(&orig)])
+                    .unwrap()
+            };
             assert_eq!(orig, result);
         }};
     }
@@ -574,7 +631,8 @@ mod test {
             [Type::Pointer, Type::Usize, Type::Pointer],
             [Type::I32, Type::F64, Type::Pointer],
             Some(Type::I32),
-        );
+        )
+        .unwrap();
 
         // Safety:
         // * snprintf is a vararg function that will not write outside the length of the output
@@ -598,6 +656,7 @@ mod test {
                     Arg::borrowed(&cstr.as_ptr()),
                 ],
             )
+            .unwrap()
         };
 
         assert_eq!(result, expected.count_bytes().try_into().unwrap());
@@ -638,7 +697,8 @@ mod miritest {
                 Type::structure(&[Type::U8]),
             ],
             Some(Type::U32),
-        );
+        )
+        .unwrap();
 
         let cif_1 = cif.clone();
         drop(cif);
@@ -661,10 +721,16 @@ mod miritest {
         // SAFETY: [`Cif::call`] is called with the correct number of arguments with (mostly) the
         // correct type. A struct with no members cannot be read anyways?
         unsafe {
-            cif_1.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
-            cif_2.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
+            cif_1
+                .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                .unwrap();
+            cif_2
+                .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                .unwrap();
             drop(cif_2);
-            cif_3.call::<u32>(CodePtr(dummy_function as *mut _), &arguments);
+            cif_3
+                .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                .unwrap();
         }
     }
 
@@ -674,7 +740,8 @@ mod miritest {
         let cif = Cif::new(
             &[Type::I8, Type::Pointer, Type::structure(&[Type::F64])],
             Some(Type::U64),
-        );
+        )
+        .unwrap();
 
         // Invoke `cif`'s debug impl.
         let _ = format!("{cif:?}");
@@ -688,7 +755,7 @@ mod miritest {
                 let fixed_args = vec![Type::U32; n_fixed_args];
                 let var_args = vec![Type::U32; n_var_args];
 
-                let cif = Cif::new_variadic(fixed_args, var_args, None);
+                let cif = Cif::new_variadic(fixed_args, var_args, None).unwrap();
 
                 // Safety: The `ffi_cif` should be properly initialized and readable.
                 unsafe {
@@ -745,7 +812,7 @@ mod miri {
         nargs: u32,
         rtype: *mut ffi_type,
         atypes: *mut *mut ffi_type,
-    ) -> crate::low::Result<()> {
+    ) -> Result<(), crate::low::Error> {
         // SAFETY: It is assumed that `cif`, `rtype`, and `atypes` are valid pointers that can be
         // written to and that `artypes` points to an array of `nargs` length.
         unsafe {
@@ -782,7 +849,7 @@ mod miri {
         ntotalargs: u32,
         rtype: *mut ffi_type,
         atypes: *mut *mut ffi_type,
-    ) -> crate::low::Result<()> {
+    ) -> Result<(), crate::low::Error> {
         // SAFETY: It is assumed that `cif`, `rtype`, and `atypes` are valid pointers that can be
         // written to and that `artypes` points to an array of `nargs` length.
         unsafe {

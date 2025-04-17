@@ -32,6 +32,8 @@ mod private {
 ///     );
 /// }
 ///
+/// # use libffi::middle::Error;
+/// # fn main() -> Result<(), Error> {
 /// let mut array: [i32; 10] = [i32::MAX, 3, 7, 1000, 5, 0, 9, 13, 2, i32::MIN];
 ///
 /// let closure = Closure::new(|a: *const i32, b: *const i32| -> i32 {
@@ -43,7 +45,7 @@ mod private {
 ///         std::cmp::Ordering::Equal => 0,
 ///         std::cmp::Ordering::Greater => 1,
 ///     }
-/// });
+/// })?;
 ///
 /// // SAFETY:
 /// // * `array` is a valid, mut array with 10 elements of size `size_of::<i32>()`
@@ -58,6 +60,8 @@ mod private {
 /// }
 ///
 /// assert!(array.is_sorted());
+/// #   Ok(())
+/// # }
 /// ```
 pub trait Closurable<ARGS, RET, FN>: private::ClosurableSuper<ARGS, RET, FN>
 where
@@ -402,8 +406,8 @@ where
     ///
     /// # Panics
     ///
-    /// As mentioned, this function panics if called multiple times concurrently. It is not possible
-    /// to catch the panic.
+    /// This function panics if called multiple times concurrently. It is not possible to catch the
+    /// panic.
     ///
     /// # Safety
     ///

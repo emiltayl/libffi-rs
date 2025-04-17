@@ -4,6 +4,7 @@ use alloc::vec;
 #[cfg(not(test))]
 use alloc::vec::Vec;
 
+use super::Error;
 use super::types::Type;
 
 /// Provides a builder-style API for constructing CIFs and closures.
@@ -32,13 +33,15 @@ use super::types::Type;
 ///     fn mul(a: u64, b: u64) -> u64;
 /// }
 ///
+/// # use libffi::middle::Error;
+/// # fn main() -> Result<(), Error> {
 /// let cif = Builder::new()
 ///     // The default ABI is set by default, so the `abi` call is not needed unless you need to
 ///     // function with a non-default ABI.
 ///     .abi(ffi_abi_FFI_DEFAULT_ABI)
 ///     .args(&[Type::U64, Type::U64])
 ///     .res(Some(Type::U64))
-///     .into_cif();
+///     .into_cif()?;
 ///
 /// // SAFETY: `mul` only accepts literal values and performs a multiplication, returning a `u64`.
 /// let result: u64 = unsafe {
@@ -46,9 +49,11 @@ use super::types::Type;
 ///         CodePtr(mul as *mut _),
 ///         &[Arg::borrowed(&3u64), Arg::borrowed(&5u64)],
 ///     )
-/// };
+/// }?;
 ///
 /// assert_eq!(result, 3 * 5);
+/// #   Ok(())
+/// # }
 /// ```
 ///
 /// Building and calling a closure:
@@ -77,6 +82,8 @@ use super::types::Type;
 ///     }
 /// }
 ///
+/// # use libffi::middle::Error;
+/// # fn main() -> Result<(), Error> {
 /// let lambda = |x: u64, y: u64| x + y;
 ///
 /// let closure = Builder::new()
@@ -84,7 +91,7 @@ use super::types::Type;
 ///     .arg(Type::U64)
 ///     .res(Some(Type::U64))
 ///     // In this case, a reference to the lambda `lambda` is the closure's `userdata`.
-///     .into_closure(lambda_callback, &lambda);
+///     .into_closure(lambda_callback, &lambda)?;
 ///
 /// // SAFETY: `lambda_callback` takes two `u64`s and returns a `u64`.
 /// unsafe {
@@ -93,6 +100,8 @@ use super::types::Type;
 ///     assert_eq!(11, fun(5, 6));
 ///     assert_eq!(12, fun(5, 7));
 /// }
+/// #   Ok(())
+/// # }
 /// ```
 ///
 /// [`args`]: `Builder::args`
@@ -152,7 +161,11 @@ impl Builder {
     }
 
     /// Builds a CIF.
-    pub fn into_cif(self) -> super::Cif {
+    ///
+    /// # Errors
+    ///
+    /// See [`Cif::new`] for possible error conditions.
+    pub fn into_cif(self) -> Result<super::Cif, Error> {
         super::Cif::new_with_abi(&self.args, self.res, self.abi)
     }
 
@@ -167,12 +180,16 @@ impl Builder {
     /// # Result
     ///
     /// The new closure.
+    ///
+    /// # Errors
+    ///
+    /// See [`Cif::new`] for possible error conditions.
     pub fn into_closure<U, R>(
         self,
         callback: super::Callback<U, R>,
         userdata: &U,
-    ) -> super::Closure {
-        super::Closure::new(self.into_cif(), callback, userdata)
+    ) -> Result<super::Closure, Error> {
+        super::Closure::new(self.into_cif()?, callback, userdata)
     }
 
     /// Builds a mutable closure.
@@ -186,12 +203,16 @@ impl Builder {
     /// # Result
     ///
     /// The new closure.
+    ///
+    /// # Errors
+    ///
+    /// See [`Cif::new`] for possible error conditions.
     pub fn into_closure_mut<U, R>(
         self,
         callback: super::CallbackMut<U, R>,
         userdata: &mut U,
-    ) -> super::Closure {
-        super::Closure::new_mut(self.into_cif(), callback, userdata)
+    ) -> Result<super::Closure, Error> {
+        super::Closure::new_mut(self.into_cif()?, callback, userdata)
     }
 
     /// Builds a closure that owns its `userdata`.
@@ -205,12 +226,16 @@ impl Builder {
     /// # Result
     ///
     /// The new closure.
+    ///
+    /// # Errors
+    ///
+    /// See [`Cif::new`] for possible error conditions.
     pub fn into_closure_owned<U: 'static, R>(
         self,
         callback: super::Callback<U, R>,
         userdata: U,
-    ) -> super::ClosureOwned<U> {
-        super::ClosureOwned::new(self.into_cif(), callback, userdata)
+    ) -> Result<super::ClosureOwned<U>, Error> {
+        super::ClosureOwned::new(self.into_cif()?, callback, userdata)
     }
 
     /// Builds a closure that owns and can mutate its `userdata`.
@@ -224,12 +249,16 @@ impl Builder {
     /// # Result
     ///
     /// The new closure.
+    ///
+    /// # Errors
+    ///
+    /// See [`Cif::new`] for possible error conditions.
     pub fn into_closure_owned_mut<U: 'static, R>(
         self,
         callback: super::CallbackMut<U, R>,
         userdata: U,
-    ) -> super::ClosureOwned<U> {
-        super::ClosureOwned::new_mut(self.into_cif(), callback, userdata)
+    ) -> Result<super::ClosureOwned<U>, Error> {
+        super::ClosureOwned::new_mut(self.into_cif()?, callback, userdata)
     }
 }
 
@@ -292,7 +321,8 @@ mod test {
             .arg(Type::Usize)
             .res(Some(Type::Usize))
             .abi(ffi_abi_FFI_DEFAULT_ABI)
-            .into_cif();
+            .into_cif()
+            .unwrap();
 
         // SAFETY:
         // `add_two_usizes` is an `extern "C"` function that accepts two `usize`s and returns one
@@ -302,6 +332,7 @@ mod test {
                 CodePtr(add_two_usizes as *mut _),
                 &[Arg::borrowed(&a), Arg::borrowed(&b)],
             )
+            .unwrap()
         };
 
         assert_eq!(a + b, result);
@@ -315,7 +346,8 @@ mod test {
             .arg(Type::U64)
             .arg(Type::U64)
             .res(Some(Type::U64))
-            .into_closure_mut(mut_ref_lambda_callback, &mut lambda);
+            .into_closure_mut(mut_ref_lambda_callback, &mut lambda)
+            .unwrap();
 
         // SAFETY: `mut_ref_lambda_callback` takes two `u64`s and returns a `u64`.
         unsafe {
@@ -331,7 +363,8 @@ mod test {
             .arg(Type::U64)
             .arg(Type::U64)
             .res(Some(Type::U64))
-            .into_closure_owned(ref_lambda_callback, lambda);
+            .into_closure_owned(ref_lambda_callback, lambda)
+            .unwrap();
 
         // SAFETY: `ref_lambda_callback` takes two `u64`s and returns a `u64`.
         unsafe {
@@ -347,7 +380,8 @@ mod test {
             .arg(Type::U64)
             .arg(Type::U64)
             .res(Some(Type::U64))
-            .into_closure_owned_mut(mut_ref_lambda_callback, lambda);
+            .into_closure_owned_mut(mut_ref_lambda_callback, lambda)
+            .unwrap();
 
         // SAFETY: `mut_ref_lambda_callback` takes two `u64`s and returns a `u64`.
         unsafe {

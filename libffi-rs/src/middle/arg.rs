@@ -22,7 +22,9 @@ mod private {
 ///     a + b
 /// }
 ///
-/// let cif = Cif::new(&[Type::U32, Type::U32], Some(Type::U32));
+/// # use libffi::middle::Error;
+/// # fn main() -> Result<(), Error> {
+/// let cif = Cif::new(&[Type::U32, Type::U32], Some(Type::U32))?;
 ///
 /// // First with borrowed args
 /// let a: u32 = 3;
@@ -33,7 +35,7 @@ mod private {
 ///         CodePtr(add as *mut _),
 ///         &[Arg::borrowed(&a), Arg::borrowed(&b)],
 ///     )
-/// };
+/// }?;
 ///
 /// assert_eq!(result, 7);
 ///
@@ -43,9 +45,11 @@ mod private {
 ///         CodePtr(add as *mut _),
 ///         &[Arg::owned(3u32), Arg::owned(4u32)],
 ///     )
-/// };
+/// }?;
 ///
 /// assert_eq!(result, 7);
+/// #   Ok(())
+/// # }
 /// ```
 #[derive(Debug)]
 #[repr(C)]

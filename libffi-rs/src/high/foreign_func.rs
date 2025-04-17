@@ -103,7 +103,9 @@ where
             <ARGS as FfiArgs>::as_type_array().as_ref(),
             <RET as FfiRet>::as_ffi_return_type(),
             abi,
-        );
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
 
         Self {
             cif,
@@ -152,7 +154,12 @@ where
 
         // SAFETY: It is up to the caller to ensure that the safety requirements for `call` have
         // been fulfilled.
-        unsafe { self.cif.call(self.fn_ptr, arg_ptrs.as_ref()) }
+        unsafe {
+            self.cif
+                .call(self.fn_ptr, arg_ptrs.as_ref())
+                // TODO document why unreachable
+                .unwrap_or_else(|_| unreachable!())
+        }
     }
 }
 

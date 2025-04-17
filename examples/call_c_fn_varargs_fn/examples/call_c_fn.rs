@@ -52,7 +52,7 @@ fn call_vararg_sum() {
 
 /// Demonstrating passing a `CString` to a function implemented in C.
 fn call_ascii_to_upper() {
-    let ascii_to_upper_cif = Cif::new(&[Type::Pointer], None);
+    let ascii_to_upper_cif = Cif::new(&[Type::Pointer], None).unwrap();
 
     let original_string = "thIs STriNg, should be UPPERcased?";
     let uppercase_string = original_string.to_ascii_uppercase();
@@ -61,10 +61,12 @@ fn call_ascii_to_upper() {
     // SAFETY: CString ensures that the string is NULL-terminated, so ascii_to_upper should not read
     // out of bounds.
     unsafe {
-        ascii_to_upper_cif.call::<()>(
-            CodePtr(ascii_to_upper as *mut _),
-            &[Arg::borrowed(&lowercase_string_ptr)],
-        );
+        ascii_to_upper_cif
+            .call::<()>(
+                CodePtr(ascii_to_upper as *mut _),
+                &[Arg::borrowed(&lowercase_string_ptr)],
+            )
+            .unwrap();
     }
     // SAFETY: `lowercase_string_ptr` was created by `CString` and is still NULL-terminated.
     let modified_string = unsafe {
@@ -84,10 +86,14 @@ fn catch_extern_panic() {
     }));
 
     let catch_unwind_result = std::panic::catch_unwind(|| {
-        let do_panic_cif = Cif::new(&[], None);
+        let do_panic_cif = Cif::new(&[], None).unwrap();
 
         // SAFETY: Call a valid function that does not take any arguments or return any values.
-        unsafe { do_panic_cif.call::<()>(CodePtr(call_do_panic as *mut _), &[]) }
+        unsafe {
+            do_panic_cif
+                .call::<()>(CodePtr(call_do_panic as *mut _), &[])
+                .unwrap();
+        }
     });
 
     // Reset to the previous panic hook

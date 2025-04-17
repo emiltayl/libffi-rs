@@ -73,15 +73,17 @@ extern "C" fn add(a: u32, b: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn main() -> ! {
-    let empty_cif = Cif::new(&[], None);
-    let add_cif = Cif::new(&[Type::U32, Type::U32], Some(Type::U32));
+    let empty_cif = Cif::new(&[], None).unwrap();
+    let add_cif = Cif::new(&[Type::U32, Type::U32], Some(Type::U32)).unwrap();
 
     unsafe {
-        empty_cif.call::<()>(CodePtr(empty as *mut _), &[]);
-        let add_result: u32 = add_cif.call(
-            CodePtr(add as *mut _),
-            &[Arg::borrowed(&4u32), Arg::borrowed(&5u32)],
-        );
+        empty_cif.call::<()>(CodePtr(empty as *mut _), &[]).unwrap();
+        let add_result: u32 = add_cif
+            .call(
+                CodePtr(add as *mut _),
+                &[Arg::borrowed(&4u32), Arg::borrowed(&5u32)],
+            )
+            .unwrap();
         assert_eq!(add_result, 9);
     }
 

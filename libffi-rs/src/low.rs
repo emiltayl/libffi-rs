@@ -13,7 +13,7 @@ use crate::raw;
 
 /// Errors reported by libffi.
 #[non_exhaustive]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Error {
     /// Given a bad or unsupported type representation.
     Typedef,
@@ -28,11 +28,8 @@ pub enum Error {
     Unknown(u32),
 }
 
-/// The [`core::result::Result`] type specialized for libffi [`Error`]s.
-pub type Result<T> = core::result::Result<T, Error>;
-
 // Converts the raw status type to a `Result`.
-fn status_to_result<R>(status: ffi_status, good: R) -> Result<R> {
+fn status_to_result<R>(status: ffi_status, good: R) -> Result<R, Error> {
     match status {
         raw::ffi_status_FFI_OK => Ok(good),
         raw::ffi_status_FFI_BAD_TYPEDEF => Err(Error::Typedef),
@@ -282,6 +279,8 @@ pub mod type_tag {
 /// ```
 /// use libffi::low::{ffi_abi_FFI_DEFAULT_ABI, ffi_cif, ffi_type, prep_cif, types};
 ///
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
 /// let mut args = [&raw mut types::sint32, &raw mut types::uint64];
 /// let mut cif = ffi_cif::default();
 ///
@@ -292,9 +291,10 @@ pub mod type_tag {
 ///         2,
 ///         &raw mut types::pointer,
 ///         args.as_mut_ptr(),
-///     )
+///     )?;
 /// }
-/// .unwrap();
+/// #   Ok(())
+/// # }
 /// ```
 pub unsafe fn prep_cif(
     cif: *mut ffi_cif,
@@ -302,7 +302,7 @@ pub unsafe fn prep_cif(
     nargs: u32,
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
-) -> Result<()> {
+) -> Result<(), Error> {
     // SAFETY: It is up to the caller to make sure that `cif`, `rtype`, and `atypes` are valid
     // pointers and that `atypes` points to an array of (at least) `nargs` size.
     let status = unsafe { raw::ffi_prep_cif(cif, abi, nargs, rtype, atypes) };
@@ -349,7 +349,7 @@ pub unsafe fn prep_cif_var(
     ntotalargs: u32,
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
-) -> Result<()> {
+) -> Result<(), Error> {
     // SAFETY: It is up to the caller to make sure that `cif`, `rtype`, and `atypes` are valid
     // pointers and that `atypes` points to an array of (at least) `nargs` size.
     let status = unsafe {
@@ -389,6 +389,8 @@ pub unsafe fn prep_cif_var(
 ///     a + b
 /// }
 ///
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
 /// let result = unsafe {
 ///     let mut args = [&raw mut types::uint64, &raw mut types::uint64];
 ///     let mut cif = ffi_cif::default();
@@ -399,8 +401,7 @@ pub unsafe fn prep_cif_var(
 ///         2,
 ///         &raw mut types::uint64,
 ///         args.as_mut_ptr(),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     call::<u64>(
 ///         &mut cif,
@@ -414,6 +415,8 @@ pub unsafe fn prep_cif_var(
 /// };
 ///
 /// assert_eq!(9, result);
+/// #   Ok(())
+/// # }
 /// ```
 ///
 /// # Safety
@@ -668,6 +671,8 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     f(f(x))
 /// }
 ///
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
 /// unsafe {
 ///     let mut cif = ffi_cif::default();
 ///     let mut args = [(&raw mut types::uint64).cast()];
@@ -679,10 +684,12 @@ pub type RawCallback = unsafe extern "C" fn(
 ///         1,
 ///         &raw mut types::uint64,
 ///         args.as_mut_ptr(),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     let (closure, code) = closure_alloc();
+///
+///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///
 ///     let add5: extern "C" fn(u64) -> u64 = mem::transmute(code);
 ///
 ///     prep_closure(
@@ -691,8 +698,7 @@ pub type RawCallback = unsafe extern "C" fn(
 ///         callback,
 ///         &raw mut userdata,
 ///         CodePtr(add5 as *mut _),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     assert_eq!(11, add5(6));
 ///     assert_eq!(12, add5(7));
@@ -702,6 +708,8 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     // Make sure to free the closure after we are finished with it.
 ///     unsafe { closure_free(closure) };
 /// }
+/// #   Ok(())
+/// # }
 /// ```
 pub unsafe fn prep_closure<U, R>(
     closure: *mut ffi_closure,
@@ -709,7 +717,7 @@ pub unsafe fn prep_closure<U, R>(
     callback: Callback<U, R>,
     userdata: *const U,
     code: CodePtr,
-) -> Result<()> {
+) -> Result<(), Error> {
     // SAFETY: Up to the caller, see this function's safety section.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
@@ -761,6 +769,8 @@ pub unsafe fn prep_closure<U, R>(
 ///     panic!("Panic from a libffi closure");
 /// }
 ///
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
 /// unsafe {
 ///     let mut cif = ffi_cif::default();
 ///
@@ -770,13 +780,15 @@ pub unsafe fn prep_closure<U, R>(
 ///         0,
 ///         &raw mut types::void,
 ///         ptr::null_mut(),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     let (closure, code) = closure_alloc();
+///
+///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///
 ///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
 ///
-///     prep_closure_unwindable(closure, &raw mut cif, callback, &(), code).unwrap();
+///     prep_closure_unwindable(closure, &raw mut cif, callback, &(), code)?;
 ///
 ///     let catch_result = panic::catch_unwind(move || {
 ///         this_panics();
@@ -788,6 +800,8 @@ pub unsafe fn prep_closure<U, R>(
 ///     // Make sure to free the closure after we are finished with it.
 ///     unsafe { closure_free(closure) };
 /// }
+/// #   Ok(())
+/// # }
 /// ```
 pub unsafe fn prep_closure_unwindable<U, R>(
     closure: *mut ffi_closure,
@@ -795,7 +809,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
     callback: CallbackUnwindable<U, R>,
     userdata: *const U,
     code: CodePtr,
-) -> Result<()> {
+) -> Result<(), Error> {
     // SAFETY: Up to the caller, see this function's safety section.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
@@ -869,6 +883,8 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///     f(f(x))
 /// }
 ///
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
 /// unsafe {
 ///     let mut cif = ffi_cif::default();
 ///     let mut args = [(&raw mut types::uint64).cast()];
@@ -880,10 +896,12 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///         1,
 ///         &raw mut types::uint64,
 ///         args.as_mut_ptr(),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     let (closure, code) = closure_alloc();
+///
+///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///
 ///     let add5: extern "C" fn(u64) -> u64 = mem::transmute(code);
 ///
 ///     prep_closure_mut(
@@ -892,8 +910,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///         callback,
 ///         &raw mut userdata,
 ///         CodePtr(add5 as *mut _),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     assert_eq!(5, add5(6));
 ///     assert_eq!(11, add5(7));
@@ -903,6 +920,8 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///     // Make sure to free the closure after we are finished with it.
 ///     unsafe { closure_free(closure) };
 /// }
+/// #   Ok(())
+/// # }
 /// ```
 pub unsafe fn prep_closure_mut<U, R>(
     closure: *mut ffi_closure,
@@ -910,7 +929,7 @@ pub unsafe fn prep_closure_mut<U, R>(
     callback: CallbackMut<U, R>,
     userdata: *mut U,
     code: CodePtr,
-) -> Result<()> {
+) -> Result<(), Error> {
     // SAFETY: Up to the caller, see this function's safety section.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
@@ -966,6 +985,8 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///     }
 /// }
 ///
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
 /// unsafe {
 ///     let mut cif = ffi_cif::default();
 ///
@@ -975,14 +996,16 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///         0,
 ///         &raw mut types::void,
 ///         ptr::null_mut(),
-///     )
-///     .unwrap();
+///     )?;
 ///
 ///     let (closure, code) = closure_alloc();
+///
+///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///
 ///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
 ///     let mut userdata: u64 = 0;
 ///
-///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &mut userdata, code).unwrap();
+///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &mut userdata, code)?;
 ///
 ///     let catch_result = panic::catch_unwind(move || {
 ///         this_panics();
@@ -995,6 +1018,8 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///     // Make sure to free the closure after we are finished with it.
 ///     unsafe { closure_free(closure) };
 /// }
+/// #   Ok(())
+/// # }
 /// ```
 pub unsafe fn prep_closure_unwindable_mut<U, R>(
     closure: *mut ffi_closure,
@@ -1002,7 +1027,7 @@ pub unsafe fn prep_closure_unwindable_mut<U, R>(
     callback: CallbackUnwindableMut<U, R>,
     userdata: *mut U,
     code: CodePtr,
-) -> Result<()> {
+) -> Result<(), Error> {
     // SAFETY: Up to the caller, see this function's safety section.
     let status = unsafe {
         raw::ffi_prep_closure_loc(

@@ -23,7 +23,8 @@ fn main() {
             std::cmp::Ordering::Equal => 0,
             std::cmp::Ordering::Greater => 1,
         }
-    });
+    })
+    .unwrap();
 
     // SAFETY:
     // * `array` is a valid, mut array with 10 elements of size `size_of::<i32>()`

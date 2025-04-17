@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------*-C-*-
-   libffi 3.4.7
+   libffi 3.4.8
      - Copyright (c) 2011, 2014, 2019, 2021, 2022, 2024 Anthony Green
      - Copyright (c) 1996-2003, 2007, 2008 Red Hat, Inc.
 
@@ -50,14 +50,8 @@ extern "C" {
 #endif
 
 /* Specify which architecture libffi is configured for. */
-#ifdef _WIN64
 #ifndef X86_WIN64
 #define X86_WIN64
-#endif
-#else
-#ifndef X86_WIN32
-#define X86_WIN32
-#endif
 #endif
 
 /* ---- System configuration information --------------------------------- */
@@ -67,7 +61,7 @@ extern "C" {
 #define FFI_TYPE_INT        1
 #define FFI_TYPE_FLOAT      2
 #define FFI_TYPE_DOUBLE     3
-#if 1
+#if 0
 #define FFI_TYPE_LONGDOUBLE 4
 #else
 #define FFI_TYPE_LONGDOUBLE FFI_TYPE_DOUBLE

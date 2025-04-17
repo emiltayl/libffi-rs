@@ -26,6 +26,8 @@ pub use crate::low::{
 use crate::low::{call, prep_cif, prep_cif_var};
 
 mod arg;
+#[expect(deprecated, reason = "Re-export of deprecated function.")]
+pub use arg::arg;
 pub use arg::{Arg, OwnedArg};
 
 mod closure;

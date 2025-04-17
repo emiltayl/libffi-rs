@@ -2,7 +2,15 @@ use core::ffi::c_void;
 use core::marker::PhantomData;
 use core::ptr;
 
-/// Contains an untyped pointer to a function argument.
+mod private {
+    #[derive(Debug)]
+    pub struct Marker;
+}
+
+/// Contains an untyped pointer to a function argument. A borrowed argument must be created using
+/// the `Arg::borrowed` function to ensure the borrow checker can verify the lifetime of the
+/// argument. It is also recommended to use the convenience function `Arg::owned` to create
+/// arguments that are owned by `Arg`.
 ///
 /// When calling a function via a [CIF](Cif), each argument must be passed as a C `void*`. Wrapping
 /// the argument in the [`Arg`] struct accomplishes the necessary coercion.
@@ -43,7 +51,7 @@ use core::ptr;
 #[repr(C)]
 pub enum Arg<'arg> {
     /// A argument of a borrowed value that must remain valid as long as `Arg` is alive.
-    Borrowed(*mut c_void, PhantomData<&'arg c_void>),
+    Borrowed(*mut c_void, PhantomData<&'arg c_void>, private::Marker),
     /// A owned argument that is dropped with `Arg`.
     Owned(OwnedArg),
 }
@@ -51,7 +59,11 @@ pub enum Arg<'arg> {
 impl<'arg> Arg<'arg> {
     /// Creates a borrowed `Arg` pointing to the argument provided in `arg`.
     pub fn borrowed<T>(arg: &'arg T) -> Self {
-        Arg::Borrowed(ptr::from_ref(arg) as *mut c_void, PhantomData)
+        Arg::Borrowed(
+            ptr::from_ref(arg) as *mut c_void,
+            PhantomData,
+            private::Marker,
+        )
     }
 
     /// Creates a owned `Arg`.
@@ -65,10 +77,16 @@ impl<'arg> Arg<'arg> {
     #[inline]
     pub(crate) fn as_ptr(&self) -> *mut c_void {
         match self {
-            Self::Borrowed(ptr, _) => *ptr,
+            Self::Borrowed(ptr, _, _) => *ptr,
             Self::Owned(value) => value.as_ptr(),
         }
     }
+}
+
+/// Create a new borrowed `Arg`.
+#[deprecated = "Use `Arg::borrowed` instead. This function will be removed in a future version."]
+pub fn arg<T>(arg: &T) -> Arg {
+    Arg::borrowed(arg)
 }
 
 /// Owned values used as arguments for functions.

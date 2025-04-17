@@ -8,9 +8,8 @@ use crate::low::ffi_cif;
 use crate::middle::OnceData;
 
 mod private {
-    pub trait ClosurableSuper<ARGS, RET, FN> {}
-    pub trait ClosureMutableSuper<ARGS, RET, FN> {}
-    pub trait ClosureOnceableSuper<ARGS, RET, FN> {}
+    /// Used to prevent other crates from calling "protected" functions and implementing the traits.
+    pub struct Token;
 }
 
 /// Trait for all immutable closures that can be made into a function pointer using libffi. This
@@ -65,7 +64,7 @@ mod private {
 /// #   Ok(())
 /// # }
 /// ```
-pub trait Closurable<ARGS, RET, FN>: private::ClosurableSuper<ARGS, RET, FN>
+pub trait Closurable<ARGS, RET, FN>
 where
     ARGS: for<'args> FfiArgs<'args>,
     RET: FfiRet + 'static,
@@ -97,6 +96,7 @@ where
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
         closure: *const FN,
+        _token: private::Token,
     );
 
     /// Closure handle function called by libffi, which in turn reads the provided arguments and
@@ -125,7 +125,7 @@ where
     ) {
         // SAFETY: See this function's Safety section.
         unsafe {
-            Self::call_closure_impl(cif, result_space, args, closure);
+            Self::call_closure_impl(cif, result_space, args, closure, private::Token);
         }
     }
 
@@ -155,12 +155,10 @@ where
     ) {
         // SAFETY: See this function's Safety section.
         unsafe {
-            Self::call_closure_impl(cif, result_space, args, closure);
+            Self::call_closure_impl(cif, result_space, args, closure, private::Token);
         }
     }
 }
-
-impl<FN> private::ClosurableSuper<(), (), FN> for FN where FN: Fn() {}
 
 impl<FN> Closurable<(), (), FN> for FN
 where
@@ -178,19 +176,13 @@ where
         _result_space: *mut MaybeUninit<()>,
         _args: *const *const c_void,
         closure: *const FN,
+        _token: private::Token,
     ) {
         // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
         unsafe {
             (*closure)();
         }
     }
-}
-
-impl<RET, FN> private::ClosurableSuper<(), RET, FN> for FN
-where
-    RET: AsFfiType + 'static,
-    FN: Fn() -> RET,
-{
 }
 
 impl<RET, FN> Closurable<(), RET, FN> for FN
@@ -210,6 +202,7 @@ where
         result_space: *mut MaybeUninit<RET>,
         _args: *const *const c_void,
         closure: *const FN,
+        _token: private::Token,
     ) {
         // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
         let result = unsafe { (*closure)() };
@@ -228,12 +221,6 @@ where
 
 macro_rules! impl_closurable_for_arguments {
     ($($var:ident: $ty:ident),+ $(,)?) => {
-        impl<$($ty,)+ FN> private::ClosurableSuper<($($ty,)+), (), FN> for FN
-        where
-            $($ty: AsFfiType,)+
-            FN: Fn($($ty,)+),
-        {}
-
         impl<$($ty,)+ FN> Closurable<($($ty,)+), (), FN> for FN
         where
             $($ty: AsFfiType,)+
@@ -251,6 +238,7 @@ macro_rules! impl_closurable_for_arguments {
                 _result_space: *mut MaybeUninit<()>,
                 args: *const *const c_void,
                 closure: *const FN,
+                _token: private::Token,
             ) {
                 let mut idx = 0;
                 $(
@@ -276,13 +264,6 @@ macro_rules! impl_closurable_for_arguments {
             }
         }
 
-        impl<$($ty,)+ RET, FN> private::ClosurableSuper<($($ty,)+), RET, FN> for FN
-        where
-            $($ty: AsFfiType,)+
-            RET: AsFfiType + 'static,
-            FN: Fn($($ty,)+) -> RET,
-        {}
-
         impl<$($ty,)+ RET, FN> Closurable<($($ty,)+), RET, FN> for FN
         where
             $($ty: AsFfiType,)+
@@ -301,6 +282,7 @@ macro_rules! impl_closurable_for_arguments {
                 result_space: *mut MaybeUninit<RET>,
                 args: *const *const c_void,
                 closure: *const FN,
+                _token: private::Token,
             ) {
                 let mut idx = 0;
                 $(
@@ -364,7 +346,7 @@ impl_closurable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i
 /// # Examples
 ///
 /// TODO
-pub trait ClosureMutable<ARGS, RET, FN>: private::ClosureMutableSuper<ARGS, RET, FN>
+pub trait ClosureMutable<ARGS, RET, FN>
 where
     ARGS: for<'args> FfiArgs<'args>,
     RET: FfiRet + 'static,
@@ -395,6 +377,7 @@ where
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
         closure: *mut FN,
+        _token: private::Token,
     );
 
     /// Closure handle function called by libffi, which in turn reads the provided arguments and
@@ -436,7 +419,13 @@ where
         unsafe {
             Self::lock(&(*closure_data).1);
 
-            Self::call_closure_impl(cif, result_space, args, &raw mut (*closure_data).0);
+            Self::call_closure_impl(
+                cif,
+                result_space,
+                args,
+                &raw mut (*closure_data).0,
+                private::Token,
+            );
 
             Self::unlock(&(*closure_data).1);
         }
@@ -457,7 +446,13 @@ where
         unsafe {
             Self::lock(&(*closure_data).1);
 
-            Self::call_closure_impl(cif, result_space, args, &raw mut (*closure_data).0);
+            Self::call_closure_impl(
+                cif,
+                result_space,
+                args,
+                &raw mut (*closure_data).0,
+                private::Token,
+            );
 
             Self::unlock(&(*closure_data).1);
         }
@@ -481,8 +476,6 @@ where
     }
 }
 
-impl<FN> private::ClosureMutableSuper<(), (), FN> for FN where FN: FnMut() {}
-
 impl<FN> ClosureMutable<(), (), FN> for FN
 where
     FN: FnMut(),
@@ -499,19 +492,13 @@ where
         _result_space: *mut MaybeUninit<()>,
         _args: *const *const c_void,
         closure: *mut FN,
+        _token: private::Token,
     ) {
         // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
         unsafe {
             (*closure)();
         }
     }
-}
-
-impl<RET, FN> private::ClosureMutableSuper<(), RET, FN> for FN
-where
-    RET: AsFfiType + 'static,
-    FN: FnMut() -> RET,
-{
 }
 
 impl<RET, FN> ClosureMutable<(), RET, FN> for FN
@@ -531,6 +518,7 @@ where
         result_space: *mut MaybeUninit<RET>,
         _args: *const *const c_void,
         closure: *mut FN,
+        _token: private::Token,
     ) {
         // SAFETY: It is up to the caller to assure that `closure` points to a valid closure.
         let result = unsafe { (*closure)() };
@@ -549,12 +537,6 @@ where
 
 macro_rules! impl_closuremutable_for_arguments {
     ($($var:ident: $ty:ident),+ $(,)?) => {
-        impl<$($ty,)+ FN> private::ClosureMutableSuper<($($ty,)+), (), FN> for FN
-        where
-            $($ty: AsFfiType,)+
-            FN: FnMut($($ty,)+),
-        {}
-
         impl<$($ty,)+ FN> ClosureMutable<($($ty,)+), (), FN> for FN
         where
             $($ty: AsFfiType,)+
@@ -572,6 +554,7 @@ macro_rules! impl_closuremutable_for_arguments {
                 _result_space: *mut MaybeUninit<()>,
                 args: *const *const c_void,
                 closure: *mut FN,
+                _token: private::Token,
             ) {
                 let mut idx = 0;
                 $(
@@ -596,13 +579,6 @@ macro_rules! impl_closuremutable_for_arguments {
             }
         }
 
-        impl<$($ty,)+ RET, FN> private::ClosureMutableSuper<($($ty,)+), RET, FN> for FN
-        where
-            $($ty: AsFfiType,)+
-            RET: AsFfiType + 'static,
-            FN: FnMut($($ty,)+) -> RET,
-        {}
-
         impl<$($ty,)+ RET, FN> ClosureMutable<($($ty,)+), RET, FN> for FN
         where
             $($ty: AsFfiType,)+
@@ -621,6 +597,7 @@ macro_rules! impl_closuremutable_for_arguments {
                 result_space: *mut MaybeUninit<RET>,
                 args: *const *const c_void,
                 closure: *mut FN,
+                _token: private::Token,
             ) {
                 let mut idx = 0;
                 $(
@@ -684,7 +661,7 @@ impl_closuremutable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: 
 /// # Examples
 ///
 /// TODO
-pub trait ClosureOnceable<ARGS, RET, FN>: private::ClosureOnceableSuper<ARGS, RET, FN>
+pub trait ClosureOnceable<ARGS, RET, FN>
 where
     ARGS: for<'args> FfiArgs<'args>,
     RET: FfiRet + 'static,
@@ -715,6 +692,7 @@ where
         result_space: *mut MaybeUninit<RET>,
         args: *const *const c_void,
         closure: FN,
+        _token: private::Token,
     );
 
     /// Closure handle function called by libffi, which in turn reads the provided arguments and
@@ -759,7 +737,7 @@ where
                 .acquire()
                 .expect("Attempt to call `FnOnce` closure several times.");
 
-            Self::call_closure_impl(cif, result_space, args, *userdata);
+            Self::call_closure_impl(cif, result_space, args, *userdata, private::Token);
         }
     }
 
@@ -784,12 +762,10 @@ where
                 .acquire()
                 .expect("Attempt to call `FnOnce` closure several times.");
 
-            Self::call_closure_impl(cif, result_space, args, *userdata);
+            Self::call_closure_impl(cif, result_space, args, *userdata, private::Token);
         }
     }
 }
-
-impl<FN> private::ClosureOnceableSuper<(), (), FN> for FN where FN: FnOnce() {}
 
 impl<FN> ClosureOnceable<(), (), FN> for FN
 where
@@ -807,17 +783,11 @@ where
         _result_space: *mut MaybeUninit<()>,
         _args: *const *const c_void,
         closure: FN,
+        _token: private::Token,
     ) {
         // TODO write something about guarantee that it will only be called once.
         closure();
     }
-}
-
-impl<RET, FN> private::ClosureOnceableSuper<(), RET, FN> for FN
-where
-    RET: AsFfiType + 'static,
-    FN: FnOnce() -> RET,
-{
 }
 
 impl<RET, FN> ClosureOnceable<(), RET, FN> for FN
@@ -837,6 +807,7 @@ where
         result_space: *mut MaybeUninit<RET>,
         _args: *const *const c_void,
         closure: FN,
+        _token: private::Token,
     ) {
         // TODO write something about guarantee that it will only be called once.
         let result = closure();
@@ -855,12 +826,6 @@ where
 
 macro_rules! impl_closureonceable_for_arguments {
     ($($var:ident: $ty:ident),+ $(,)?) => {
-        impl<$($ty,)+ FN> private::ClosureOnceableSuper<($($ty,)+), (), FN> for FN
-        where
-            $($ty: AsFfiType,)+
-            FN: FnOnce($($ty,)+),
-        {}
-
         impl<$($ty,)+ FN> ClosureOnceable<($($ty,)+), (), FN> for FN
         where
             $($ty: AsFfiType,)+
@@ -878,6 +843,7 @@ macro_rules! impl_closureonceable_for_arguments {
                 _result_space: *mut MaybeUninit<()>,
                 args: *const *const c_void,
                 closure: FN,
+                _token: private::Token,
             ) {
                 let mut idx = 0;
                 $(
@@ -901,13 +867,6 @@ macro_rules! impl_closureonceable_for_arguments {
             }
         }
 
-        impl<$($ty,)+ RET, FN> private::ClosureOnceableSuper<($($ty,)+), RET, FN> for FN
-        where
-            $($ty: AsFfiType,)+
-            RET: AsFfiType + 'static,
-            FN: FnOnce($($ty,)+) -> RET,
-        {}
-
         impl<$($ty,)+ RET, FN> ClosureOnceable<($($ty,)+), RET, FN> for FN
         where
             $($ty: AsFfiType,)+
@@ -926,6 +885,7 @@ macro_rules! impl_closureonceable_for_arguments {
                 result_space: *mut MaybeUninit<RET>,
                 args: *const *const c_void,
                 closure: FN,
+                _token: private::Token,
             ) {
                 let mut idx = 0;
                 $(

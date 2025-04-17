@@ -36,9 +36,10 @@ jobs:
           mkdir libffi-sys-rs/libffi/
           curl -Lo "${{ runner.temp }}/libffi.tar.gz" "$LIBFFI_URL"
           sha256sum "${{ runner.temp }}/libffi.tar.gz"
+          export SHASUM=$(sha256sum "${{ runner.temp }}/libffi.tar.gz" | cut -d " " -f 1)
           tar zxvf "${{ runner.temp }}/libffi.tar.gz" -C libffi-sys-rs/libffi/ --strip-components=1
           git add libffi-sys-rs/libffi
-          git commit -m "Downloaded libffi $VERSION from $LIBFFI_URL."
+          git commit -m "Downloaded libffi $VERSION from $LIBFFI_URL. SHA256 of the .tar.gz was $SHASUM."
           git push origin "$BRANCH"
   
   generate_msvc_headers:

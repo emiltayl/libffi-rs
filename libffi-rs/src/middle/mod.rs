@@ -10,11 +10,12 @@
 
 extern crate alloc;
 #[cfg(not(test))]
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
+use core::borrow::Borrow;
 use core::ffi::c_void;
 
 #[cfg(miri)]
-use miri::{call, prep_cif};
+use miri::{call, prep_cif, prep_cif_var};
 
 use crate::low::ffi_cif;
 pub use crate::low::{
@@ -22,7 +23,7 @@ pub use crate::low::{
     ffi_abi_FFI_DEFAULT_ABI,
 };
 #[cfg(not(miri))]
-use crate::low::{call, prep_cif};
+use crate::low::{call, prep_cif, prep_cif_var};
 
 mod arg;
 pub use arg::{Arg, OwnedArg};
@@ -130,37 +131,112 @@ impl Cif {
         Cif { cif, args, result }
     }
 
-    /// Creates a new variadic [CIF](Cif) for the given argument and result
-    /// types.
+    /// Creates a new variadic [CIF](Cif) for the given argument and result types. When calling a
+    /// function using a `Cif` created by this function, all arguments should be passed in the order
+    /// they were provided with the `fixed_args` coming first, followed by the `var_args`.
     ///
-    /// Takes ownership of the argument and result [`Type`]s, because
-    /// the resulting [`Cif`] retains references to them. Defaults to
-    /// the platform’s default calling convention; this can be adjusted
-    /// using [`Cif::set_abi`].
-    pub fn new_variadic<I>(args: I, fixed_args: usize, result: Type) -> Self
+    /// # Arguments
+    ///
+    /// * `fixed_args` is an iterator over the [`Type`]s of the fixed arguments that are always
+    ///   provided to the function. All integer arguments must be at least 32 bits wide.
+    /// * `var_args` is an iterator over the [`Type`]s that of the varargs provided to the function.
+    ///   Note that if a different number of varargs or different types are required, a new [`Cif`]
+    ///   must be created. All integer arguments must be at least 32 bits wide.
+    /// * `result` is either `None` if the function does not return a value or `Some(Type)` with the
+    ///   return type.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
+    /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
+    ///
+    /// If any of the argument types are 8- or 16-bit integers, or 32-bit floats.
+    ///
+    /// # Examples
+    /// todo
+    pub fn new_variadic<I, J>(fixed_args: I, var_args: J, result: Option<Type>) -> Self
     where
-        I: IntoIterator<Item = Type>,
-        I::IntoIter: ExactSizeIterator<Item = Type>,
+        I: IntoIterator,
+        I::Item: Borrow<Type>,
+        J: IntoIterator,
+        J::Item: Borrow<Type>,
     {
-        let args = args.into_iter();
-        let nargs = args.len();
-        let args = types::TypeArray::new(args);
-        let mut cif: low::ffi_cif = Default::default();
+        Self::new_variadic_with_abi(fixed_args, var_args, result, ffi_abi_FFI_DEFAULT_ABI)
+    }
 
+    /// Creates a new variadic [CIF](Cif) for the given argument and result types for the specified
+    /// ABI. When calling a function using a `Cif` created by this function, all arguments should be
+    /// passed in the order they were provided with the `fixed_args` coming first, followed by the
+    /// `var_args`.
+    ///
+    /// # Arguments
+    ///
+    /// * `fixed_args` is an iterator over the [`Type`]s of the fixed arguments that are always
+    ///   provided to the function. All integer arguments must be at least 32 bits wide.
+    /// * `var_args` is an iterator over the [`Type`]s that of the varargs provided to the function.
+    ///   Note that if a different number of varargs or different types are required, a new [`Cif`]
+    ///   must be created. All integer arguments must be at least 32 bits wide.
+    /// * `result` is either `None` if the function does not return a value or `Some(Type)` with the
+    ///   return type.
+    /// * `abi` is the Abi of the target function.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `args` contains 2^32 or more elements or if `low::prep_cif` fails to
+    /// create the CIF. The latter is probably caused by a bug in this crate and should be reported.
+    ///
+    /// If any of the argument types are 8- or 16-bit integers, or 32-bit floats.
+    ///
+    /// # Examples
+    /// todo
+    pub fn new_variadic_with_abi<I, J>(
+        fixed_args: I,
+        var_args: J,
+        result: Option<Type>,
+        abi: FfiAbi,
+    ) -> Self
+    where
+        I: IntoIterator,
+        I::Item: Borrow<Type>,
+        J: IntoIterator,
+        J::Item: Borrow<Type>,
+    {
+        let mut args: Vec<types::RawType> = fixed_args
+            .into_iter()
+            .map(|ty| ty.borrow().as_raw())
+            .collect();
+
+        let n_fixed_args: u32 = args.len().try_into().unwrap();
+
+        args.extend(var_args.into_iter().map(|ty| ty.borrow().as_raw()));
+
+        let n_total_args: u32 = args.len().try_into().unwrap();
+
+        let args = args.into_boxed_slice();
+        let args = Box::into_raw(args);
+
+        let result = match result {
+            Some(result) => result.as_raw(),
+            None => types::RawType::VOID,
+        };
+
+        let cif = Box::into_raw(Box::new(ffi_cif::default()));
+
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
+        // the `low::prep_cif` call.
         unsafe {
-            low::prep_cif_var(
-                &mut cif,
-                low::ffi_abi_FFI_DEFAULT_ABI,
-                fixed_args,
-                nargs,
-                result.as_raw_ptr(),
-                args.as_raw_ptr(),
+            prep_cif_var(
+                cif,
+                abi,
+                n_fixed_args,
+                n_total_args,
+                result.0,
+                (*args).as_mut_ptr().cast(),
             )
         }
         .expect("low::prep_cif_var");
 
-        // Note that cif retains references to args and result,
-        // which is why we hold onto them here.
+        // Note that cif retains references to args and result, which is why we hold onto them here.
         Cif { cif, args, result }
     }
 
@@ -259,6 +335,8 @@ unsafe impl Sync for Cif {}
 #[cfg(all(test, not(miri)))]
 mod test {
     use core::f64;
+    #[cfg(not(target_env = "msvc"))]
+    use core::ffi::c_char;
     use std::f32;
 
     use super::*;
@@ -470,6 +548,58 @@ mod test {
             large_struct.clone()
         ));
     }
+
+    /// Test variadic cifs by calling `snprintf`. I could not seem to figure out how to get
+    /// _snprintf linked with msvc, so I am leaving it out for now.
+    #[cfg(not(target_env = "msvc"))]
+    #[test]
+    fn call_snprintf() {
+        unsafe extern "C" {
+            unsafe fn snprintf(s: *mut c_char, n: usize, format: *const c_char, ...) -> i32;
+        }
+
+        let mut output_buffer = [0u8; 50];
+
+        let expected = c"num: 123, pi: 3.14, This is a &Cstr";
+
+        let format_str = c"num: %d, pi: %.2f, %s";
+
+        let num = 123;
+        let pi = f64::consts::PI;
+        let cstr = c"This is a &Cstr";
+
+        let cif = Cif::new_variadic(
+            [Type::Pointer, Type::Usize, Type::Pointer],
+            [Type::I32, Type::F64, Type::Pointer],
+            Some(Type::I32),
+        );
+
+        // Safety:
+        // * snprintf is a vararg function that will not write outside the length of the output
+        //   buffer.
+        // * The output buffer is mutable.
+        // * The proper length of the output buffer is given and len() returns an usize.
+        // * There is room for the NULL-byte at the end of the buffer as well.
+        // * The format string points to a well-formed C-string.
+        // * The first argument is a signed 32-bit int.
+        // * The second argument is a 32-bit float.
+        // * The third arguments is a pointer to a well-formed C-string.
+        let result: i32 = unsafe {
+            cif.call(
+                CodePtr(snprintf as *mut _),
+                &[
+                    Arg::borrowed(&output_buffer.as_mut_ptr()),
+                    Arg::borrowed(&output_buffer.len()),
+                    Arg::borrowed(&format_str.as_ptr()),
+                    Arg::borrowed(&num),
+                    Arg::borrowed(&pi),
+                    Arg::borrowed(&cstr.as_ptr()),
+                ],
+            )
+        };
+
+        assert_eq!(result, expected.count_bytes().try_into().unwrap());
+    }
 }
 
 /// Tests to ensure that memory management for `middle` structs is correct.
@@ -547,6 +677,27 @@ mod miritest {
         // Invoke `cif`'s debug impl.
         let _ = format!("{cif:?}");
     }
+
+    // Verify that `Ciff::new_variadic` is able to count how many arguments it receives.
+    #[test]
+    fn verify_var_cif_count() {
+        for n_fixed_args in 0..5 {
+            for n_var_args in 0..5 {
+                let fixed_args = vec![Type::U32; n_fixed_args];
+                let var_args = vec![Type::U32; n_var_args];
+
+                let cif = Cif::new_variadic(fixed_args, var_args, None);
+
+                // Safety: The `ffi_cif` should be properly initialized and readable.
+                unsafe {
+                    assert_eq!(
+                        (*cif.cif).nargs,
+                        u32::try_from(n_fixed_args + n_var_args).unwrap()
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[cfg(miri)]
@@ -606,6 +757,46 @@ mod miri {
 
             (*cif).abi = abi;
             (*cif).nargs = nargs;
+            (*cif).rtype = rtype;
+            (*cif).arg_types = atypes;
+        }
+
+        Ok(())
+    }
+
+    /// Replaces [`low::prep_cif_var`] for tests with miri. Note that this function can not be used
+    /// to prepare an actual [`middle::Cif`] for use with libffi.
+    ///
+    /// This function will write to `cif`, `rtype`, and `atypes` as that is something libffi may do.
+    ///
+    /// # Safety
+    ///
+    /// This function will write to the pointers provided to this function. As long as they point to
+    /// valid memory, nothing unsafe should happen.
+    pub(super) unsafe fn prep_cif_var(
+        cif: *mut ffi_cif,
+        abi: ffi_abi,
+        nfixedargs: u32,
+        ntotalargs: u32,
+        rtype: *mut ffi_type,
+        atypes: *mut *mut ffi_type,
+    ) -> crate::low::Result<()> {
+        // SAFETY: It is assumed that `cif`, `rtype`, and `atypes` are valid pointers that can be
+        // written to and that `artypes` points to an array of `nargs` length.
+        unsafe {
+            write_to_ffi_type(rtype);
+
+            let nfixedargs_usize = usize::try_from(nfixedargs).unwrap();
+            let nargs_usize = usize::try_from(ntotalargs).unwrap();
+
+            assert!(nfixedargs_usize <= nargs_usize);
+
+            for argument_index in 0..nargs_usize {
+                write_to_ffi_type(*(atypes.add(argument_index)));
+            }
+
+            (*cif).abi = abi;
+            (*cif).nargs = ntotalargs;
             (*cif).rtype = rtype;
             (*cif).arg_types = atypes;
         }

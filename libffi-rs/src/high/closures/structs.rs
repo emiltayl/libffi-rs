@@ -5,9 +5,9 @@ use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::sync::atomic::AtomicBool;
 
-use super::{Closurable, ClosureMutable};
+use super::{Closurable, ClosureMutable, ClosureOnceable};
 use crate::high::{FfiArgs, FfiRet};
-use crate::middle::{Cif, ClosureOwned, Error};
+use crate::middle::{Cif, ClosureOnce as MiddleClosureOnce, ClosureOwned, Error};
 
 /// `Closure` accepts a Rust closure and creates a function pointer so that a function pointer to
 /// the closure can be sent across FFI boundaries.
@@ -220,10 +220,115 @@ where
 {
 }
 
+/// `ClosureOnce` accepts a `FnOnce` Rust closure and creates a function pointer so that a function
+/// pointer to the closure can be sent across FFI boundaries.
+pub struct ClosureOnce<ARGS, RET, FN>
+where
+    ARGS: for<'args> FfiArgs<'args>,
+    RET: FfiRet + 'static,
+    FN: ClosureOnceable<ARGS, RET, FN>,
+{
+    inner: MiddleClosureOnce<FN>,
+    _phantom: PhantomData<(ARGS, RET)>,
+}
+
+impl<ARGS, RET, FN> ClosureOnce<ARGS, RET, FN>
+where
+    ARGS: for<'args> FfiArgs<'args>,
+    RET: FfiRet + 'static,
+    FN: ClosureOnceable<ARGS, RET, FN>,
+{
+    /// Creates a new [`ClosureOnce`]. Closures created with [`ClosureOnce::new`] aborts if the
+    /// closure, or code called by the closure, panics. Since [`ClosureOnce`] takes `FnOnce`
+    /// closures, attempting to call the closure more than once will also abort the process.
+    ///
+    /// If multiple calls is needed, it is recommended to use a `Closure` or `ClosureMut` instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if libffi is unable to allocate memory for the closure.
+    pub fn new(func: FN) -> Result<Self, Error> {
+        let cif = Cif::new(
+            <ARGS as FfiArgs>::as_type_array().as_ref(),
+            <RET as FfiRet>::as_ffi_return_type(),
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
+
+        let inner = MiddleClosureOnce::new_mut(cif, FN::call_closure, func)?;
+
+        Ok(Self {
+            inner,
+            _phantom: PhantomData,
+        })
+    }
+
+    /// Creates a new [`ClosureOnce`] with unwinding panics. This is only available for testing.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if libffi is unable to allocate memory for the closure.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn new_unwindable(func: FN) -> Result<Self, Error> {
+        let cif = Cif::new(
+            <ARGS as FfiArgs>::as_type_array().as_ref(),
+            <RET as FfiRet>::as_ffi_return_type(),
+        )
+        // TODO document why unreachable
+        .unwrap_or_else(|_| unreachable!());
+
+        let inner = MiddleClosureOnce::new_unwindable_mut(cif, FN::call_closure_unwindable, func)?;
+
+        Ok(Self {
+            inner,
+            _phantom: PhantomData,
+        })
+    }
+
+    /// Returns a function pointer that can be used to execute the closure. Note that the function
+    /// pointer is only valid as long as `self` is alive. Calling the function pointer after `self`
+    /// is dropped is undefined behavior.
+    pub fn as_fn_ptr(&self) -> FN::FnPointer {
+        // SAFETY: The type parameters should ensure that the function pointer type is correct.
+        unsafe { FN::ptr_to_self(self.inner.code.0) }
+    }
+
+    /// Consumes and leaks the `Closure` using [`Box::leak`] See `Box`'s documentation for more
+    /// details.
+    ///
+    /// Note that `FN` must outlive `'leak`, if a `'static` reference is needed, `FN` must also be
+    /// 'static.
+    pub fn leak<'leak>(self) -> &'leak ClosureOnce<ARGS, RET, FN> {
+        Box::leak(Box::new(self))
+    }
+}
+
+// SAFETY: If the closure `FN` is `Send`, `ClosureOnce` should also be `Send` as there is nothing
+// else in `ClosureOnce` that cannot be sent to another thread.
+unsafe impl<ARGS, RET, FN> Send for ClosureOnce<ARGS, RET, FN>
+where
+    ARGS: for<'args> FfiArgs<'args>,
+    RET: FfiRet + 'static,
+    FN: ClosureOnceable<ARGS, RET, FN> + Send,
+{
+}
+
+// SAFETY: If the closure `FN` is `Sync`, `ClosureOncw` should also be `Sync` as `ClosureOnce`
+// utilizes atomics to ensure only one call to the closure. Note that `ClosureOnce` will abort if
+// called more than once.
+unsafe impl<ARGS, RET, FN> Sync for ClosureOnce<ARGS, RET, FN>
+where
+    ARGS: for<'args> FfiArgs<'args>,
+    RET: FfiRet + 'static,
+    FN: ClosureOnceable<ARGS, RET, FN> + Sync,
+{
+}
+
 #[cfg(all(test, not(miri)))]
 mod test {
     use core::hint::spin_loop;
-    use core::sync::atomic::Ordering;
+    use core::sync::atomic::{AtomicU32, Ordering};
     use core::time::Duration;
     use std::time::Instant;
 
@@ -269,6 +374,10 @@ mod test {
 
             let original: $ty = $val;
             let closure = ClosureMut::new(|val: $ty| val).unwrap();
+            assert_eq!((closure.as_fn_ptr())($val), original);
+
+            let original: $ty = $val;
+            let closure = ClosureOnce::new(|val: $ty| val).unwrap();
             assert_eq!((closure.as_fn_ptr())($val), original);
         }};
     }
@@ -344,6 +453,9 @@ mod test {
 
                 let closuremut = ClosureMut::new_unwindable(|| {}).unwrap();
                 (closuremut.as_fn_ptr())();
+
+                let closureonce = ClosureOnce::new_unwindable(|| {}).unwrap();
+                (closureonce.as_fn_ptr())();
             }
         };
 
@@ -356,6 +468,10 @@ mod test {
 
                 let closuremut = ClosureMut::new_unwindable(|| -> $ty {$val}).unwrap();
                 let result = (closuremut.as_fn_ptr())();
+                assert_eq!(result, $val);
+
+                let closureonce = ClosureOnce::new_unwindable(|| -> $ty {$val}).unwrap();
+                let result = (closureonce.as_fn_ptr())();
                 assert_eq!(result, $val);
             }
 
@@ -373,6 +489,11 @@ mod test {
                     assert_eq!($name, $val);
                 }).unwrap();
                 (closuremut.as_fn_ptr())($val);
+
+                let closureonce = ClosureOnce::new_unwindable(|$name: $ty| {
+                    assert_eq!($name, $val);
+                }).unwrap();
+                (closureonce.as_fn_ptr())($val);
             }
 
             generate_closure_test!($ty = $val => ());
@@ -393,6 +514,13 @@ mod test {
                 }).unwrap();
                 let result = (closuremut.as_fn_ptr())($val);
                 assert_eq!(result, $retval);
+
+                let closureonce = ClosureOnce::new_unwindable(|$name: $ty| -> $retty {
+                    assert_eq!($name, $val);
+                    $retval
+                }).unwrap();
+                let result = (closureonce.as_fn_ptr())($val);
+                assert_eq!(result, $retval);
             }
 
             generate_closure_test!($name: $ty = $val);
@@ -411,6 +539,12 @@ mod test {
                     $(assert_eq!($restname, $restval);)+
                 }).unwrap();
                 (closuremut.as_fn_ptr())($val, $($restval),+);
+
+                let closureonce = ClosureOnce::new_unwindable(|$name: $ty, $($restname: $restty),+| {
+                    assert_eq!($name, $val);
+                    $(assert_eq!($restname, $restval);)+
+                }).unwrap();
+                (closureonce.as_fn_ptr())($val, $($restval),+);
             }
 
             generate_closure_test!($ty = $val => $($restname: $restty = $restval),+);
@@ -432,6 +566,14 @@ mod test {
                     $retval
                 }).unwrap();
                 let result = (closuremut.as_fn_ptr())($val, $($restval),+);
+                assert_eq!(result, $retval);
+
+                let closureonce = ClosureOnce::new_unwindable(|$name: $ty, $($restname: $restty),+| -> $retty {
+                    assert_eq!($name, $val);
+                    $(assert_eq!($restname, $restval);)+
+                    $retval
+                }).unwrap();
+                let result = (closureonce.as_fn_ptr())($val, $($restval),+);
                 assert_eq!(result, $retval);
             }
 
@@ -554,6 +696,43 @@ mod test {
                 panic!("`thread_2` did not panic, but was able to execute `ClosureMut`.")
             }
         });
+    }
+
+    #[test]
+    #[should_panic = "Attempt to call `FnOnce` closure several times."]
+    fn closureonce_can_only_call_once() {
+        let closure = ClosureOnce::new_unwindable(|| {}).unwrap();
+
+        (closure.as_fn_ptr())();
+        (closure.as_fn_ptr())();
+    }
+
+    struct Droppable<'a>(&'a AtomicU32);
+
+    impl Drop for Droppable<'_> {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn closureonce_dropped_exactly_once() {
+        let counter = AtomicU32::new(0);
+        {
+            let droppable = Droppable(&counter);
+            let closure = ClosureOnce::new(|| {
+                drop(droppable);
+            })
+            .unwrap();
+
+            let val = counter.load(Ordering::Relaxed);
+            assert_eq!(val, 0);
+
+            (closure.as_fn_ptr())();
+        }
+
+        let val = counter.load(Ordering::Relaxed);
+        assert_eq!(val, 1);
     }
 }
 
@@ -832,6 +1011,32 @@ mod miritest {
 
         generate_miri_closure_test_for_ty!(
             ClosureMut<_, _, _>,
+            i8 = 0x55 =>
+            a: i8 = 0x55,
+            b: u8 = 0xAA,
+            c: i16 = 0x5555,
+            d: u16 = 0xAAAA,
+            e: i32 = 0x5555_5555,
+            f: u32 = 0xAAAA_AAAA,
+            g: i64 = 0x5555_5555_5555_5555,
+            h: u64 = 0xAAAA_AAAA_AAAA_AAAA,
+            i: isize = 0x5555_5555,
+            j: usize = 0xAAAA_AAAA,
+            k: f32 = std::f32::consts::PI,
+            l: f64 = std::f64::consts::TAU,
+            m: *const i32 = &raw const num,
+            n: SmallFfiStruct = SmallFfiStruct { number: 0x5555_5555, tag: 0xAA },
+            o: LargeFfiStruct = LargeFfiStruct {
+                a: 0xAAAA_AAAA_AAAA_AAAA,
+                b: 0xAAAA_AAAA_AAAA_AAAA,
+                c: 0xAAAA_AAAA_AAAA_AAAA,
+                d: 0xAAAA_AAAA_AAAA_AAAA,
+            },
+            p: u8 = 0
+        );
+
+        generate_miri_closure_test_for_ty!(
+            ClosureOnce<_, _, _>,
             i8 = 0x55 =>
             a: i8 = 0x55,
             b: u8 = 0xAA,

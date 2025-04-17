@@ -5,10 +5,12 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::high::{AsFfiType, FfiArgs, FfiRet};
 use crate::low::ffi_cif;
+use crate::middle::OnceData;
 
 mod private {
     pub trait ClosurableSuper<ARGS, RET, FN> {}
     pub trait ClosureMutableSuper<ARGS, RET, FN> {}
+    pub trait ClosureOnceableSuper<ARGS, RET, FN> {}
 }
 
 /// Trait for all immutable closures that can be made into a function pointer using libffi. This
@@ -143,8 +145,8 @@ where
     ///   a `RET`, whichever is larger.
     /// * `args` must be a pointer to an array of pointers to arguments with a layout identical to
     ///   the one described by the `cif`.
-    /// * `closure` must be an immutable closure with arguments and return values as described by
-    ///   the `cif`.
+    /// * `closure` must be an mutable closure with arguments and return values as described by the
+    ///   `cif`.
     unsafe extern "C-unwind" fn call_closure_unwindable(
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
@@ -673,6 +675,309 @@ impl_closuremutable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: 
 impl_closuremutable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M, n: N);
 impl_closuremutable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M, n: N, o: O);
 impl_closuremutable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M, n: N, o: O, p: P);
+
+/// Trait for all `FnOnce` closures that can be made into a function pointer using libffi. This
+/// trait is implemented for all eligible closures, and cannot be implemented manually.
+///
+/// TODO more text here
+///
+/// # Examples
+///
+/// TODO
+pub trait ClosureOnceable<ARGS, RET, FN>: private::ClosureOnceableSuper<ARGS, RET, FN>
+where
+    ARGS: for<'args> FfiArgs<'args>,
+    RET: FfiRet + 'static,
+    FN: ClosureOnceable<ARGS, RET, FN>,
+{
+    /// The type of the function created by libffi. Used to return a fn pointer of the correct type
+    /// in `ptr_to_self`.
+    type FnPointer;
+
+    /// Utility function used to convert raw pointers to properly typed function pointers. This
+    /// function should not be called directly, but through a [`ClosureOnce`].
+    ///
+    /// # Safety
+    ///
+    /// Should only be called with pointers from a [`Closure`] with identical type parameters.
+    #[doc(hidden)]
+    unsafe fn ptr_to_self(ptr: *mut c_void) -> Self::FnPointer;
+
+    /// The actual implementation of what goes on in `call_closure`. See
+    /// [`ClosureOnceable::call_closure`] for documentation.
+    ///
+    /// # Safety
+    ///
+    /// See [`ClosureOnceable::call_closure`].
+    #[doc(hidden)]
+    unsafe fn call_closure_impl(
+        cif: &ffi_cif,
+        result_space: *mut MaybeUninit<RET>,
+        args: *const *const c_void,
+        closure: FN,
+    );
+
+    /// Closure handle function called by libffi, which in turn reads the provided arguments and
+    /// passes them along to the stored closure. Since `ClosureOnceable` calls `FnOnce`s, the
+    /// closure may only be called once. If an attempt is made to call the closure several times,
+    /// `call_closure` panics, which will lead to the process aborting as unwinding panics is not
+    /// supported from `extern "C"` functions.
+    ///
+    /// If multiple calls is needed, it is recommended to use a `Closure` or a `ClosureMut`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if called multiple times. It is not possible to catch the panic.
+    ///
+    /// # Safety
+    ///
+    /// This function should **NOT** be called manually, but is only provided as a function pointer
+    /// to libffi to handle sending the correct arguments to the closure and providing the return
+    /// value.
+    ///
+    /// * `cif` must be a reference to a `ffi_cif` that accurately describes the layout of the
+    ///   arguments passed to the closure and the expected return type.
+    /// * `result_space` must point to properly aligned memory that can store at least an `usize` or
+    ///   a `RET`, whichever is larger.
+    /// * `args` must be a pointer to an array of pointers to arguments with a layout identical to
+    ///   the one described by the `cif`.
+    /// * `closure` must be a closure with arguments and return values as described by the `cif`.
+    #[expect(
+        private_interfaces,
+        reason = "Automatic trait implementation not intended to be directly used by external crates."
+    )]
+    unsafe extern "C" fn call_closure(
+        cif: &ffi_cif,
+        result_space: *mut MaybeUninit<RET>,
+        args: *const *const c_void,
+        closure_data: *mut OnceData<FN>,
+    ) {
+        // SAFETY: It is up to the caller to assure that `closure_data` points to a
+        // `(FN, AtomicBool)` tuple. For further reference, see this function's Safety section.
+        unsafe {
+            let userdata = (*closure_data)
+                .acquire()
+                .expect("Attempt to call `FnOnce` closure several times.");
+
+            Self::call_closure_impl(cif, result_space, args, *userdata);
+        }
+    }
+
+    /// Unwindable version of call_closure for `FnOnce` closures. Only used for testing. See
+    /// [`ClosureOnceable::call_closure`] for documentation.
+    #[cfg(test)]
+    #[doc(hidden)]
+    #[expect(
+        private_interfaces,
+        reason = "Automatic trait implementation not intended to be directly used by external crates."
+    )]
+    unsafe extern "C-unwind" fn call_closure_unwindable(
+        cif: &ffi_cif,
+        result_space: *mut MaybeUninit<RET>,
+        args: *const *const c_void,
+        closure_data: *mut OnceData<FN>,
+    ) {
+        // SAFETY: It is up to the caller to assure that `closure_data` points to a
+        // `(FN, AtomicBool)` tuple. For further reference, see this function's Safety section.
+        unsafe {
+            let userdata = (*closure_data)
+                .acquire()
+                .expect("Attempt to call `FnOnce` closure several times.");
+
+            Self::call_closure_impl(cif, result_space, args, *userdata);
+        }
+    }
+}
+
+impl<FN> private::ClosureOnceableSuper<(), (), FN> for FN where FN: FnOnce() {}
+
+impl<FN> ClosureOnceable<(), (), FN> for FN
+where
+    FN: FnOnce(),
+{
+    type FnPointer = extern "C" fn();
+
+    unsafe fn ptr_to_self(ptr: *mut c_void) -> Self::FnPointer {
+        // SAFETY: The type parameters should ensure that the function pointer type is correct.
+        unsafe { core::mem::transmute(ptr) }
+    }
+
+    unsafe fn call_closure_impl(
+        _cif: &ffi_cif,
+        _result_space: *mut MaybeUninit<()>,
+        _args: *const *const c_void,
+        closure: FN,
+    ) {
+        // TODO write something about guarantee that it will only be called once.
+        closure();
+    }
+}
+
+impl<RET, FN> private::ClosureOnceableSuper<(), RET, FN> for FN
+where
+    RET: AsFfiType + 'static,
+    FN: FnOnce() -> RET,
+{
+}
+
+impl<RET, FN> ClosureOnceable<(), RET, FN> for FN
+where
+    RET: AsFfiType + 'static,
+    FN: FnOnce() -> RET,
+{
+    type FnPointer = extern "C" fn() -> RET;
+
+    unsafe fn ptr_to_self(ptr: *mut c_void) -> Self::FnPointer {
+        // SAFETY: The type parameters should ensure that the function pointer type is correct.
+        unsafe { core::mem::transmute(ptr) }
+    }
+
+    unsafe fn call_closure_impl(
+        _cif: &ffi_cif,
+        result_space: *mut MaybeUninit<RET>,
+        _args: *const *const c_void,
+        closure: FN,
+    ) {
+        // TODO write something about guarantee that it will only be called once.
+        let result = closure();
+
+        // SAFETY:
+        // * `cif`'s layout is determined by the `AsFfiType` implementations.
+        // * `result_space` is a pointer to a sufficiently large space from libffi.
+        // * `args` are correctly provided if the caller has provided correctly typed arguments.
+        // * `closure` is the closure stored by [`Closure`] using Rust's type system to provide
+        //   guarantees for its signature.
+        unsafe {
+            closure_write_result(result, result_space);
+        }
+    }
+}
+
+macro_rules! impl_closureonceable_for_arguments {
+    ($($var:ident: $ty:ident),+ $(,)?) => {
+        impl<$($ty,)+ FN> private::ClosureOnceableSuper<($($ty,)+), (), FN> for FN
+        where
+            $($ty: AsFfiType,)+
+            FN: FnOnce($($ty,)+),
+        {}
+
+        impl<$($ty,)+ FN> ClosureOnceable<($($ty,)+), (), FN> for FN
+        where
+            $($ty: AsFfiType,)+
+            FN: FnOnce($($ty,)+),
+        {
+            type FnPointer = extern "C" fn($($ty),+);
+
+            unsafe fn ptr_to_self(ptr: *mut c_void) -> Self::FnPointer {
+                // SAFETY: The type parameters should ensure that the function pointer type is correct.
+                unsafe { core::mem::transmute(ptr) }
+            }
+
+            unsafe fn call_closure_impl(
+                _cif: &ffi_cif,
+                _result_space: *mut MaybeUninit<()>,
+                args: *const *const c_void,
+                closure: FN,
+            ) {
+                let mut idx = 0;
+                $(
+                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
+                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // SAFETY: It is up to the caller to provide the correct number of arguments
+                    // with the right types.
+                    let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    // SAFETY: It is up to the caller to provide the correct number of arguments
+                    // with the right types.
+                    let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
+
+                    idx += 1;
+                )+
+
+                // Nonsensical line to make the linter happy.
+                let _ = idx;
+
+                closure($($var),+);
+            }
+        }
+
+        impl<$($ty,)+ RET, FN> private::ClosureOnceableSuper<($($ty,)+), RET, FN> for FN
+        where
+            $($ty: AsFfiType,)+
+            RET: AsFfiType + 'static,
+            FN: FnOnce($($ty,)+) -> RET,
+        {}
+
+        impl<$($ty,)+ RET, FN> ClosureOnceable<($($ty,)+), RET, FN> for FN
+        where
+            $($ty: AsFfiType,)+
+            RET: AsFfiType + 'static,
+            FN: FnOnce($($ty,)+) -> RET,
+        {
+            type FnPointer = extern "C" fn($($ty),+) -> RET;
+
+            unsafe fn ptr_to_self(ptr: *mut c_void) -> Self::FnPointer {
+                // SAFETY: The type parameters should ensure that the function pointer type is correct.
+                unsafe { core::mem::transmute(ptr) }
+            }
+
+            unsafe fn call_closure_impl(
+                _cif: &ffi_cif,
+                result_space: *mut MaybeUninit<RET>,
+                args: *const *const c_void,
+                closure: FN,
+            ) {
+                let mut idx = 0;
+                $(
+                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
+                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // SAFETY: It is up to the caller to provide the correct number of arguments
+                    // with the right types.
+                    let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    // SAFETY: It is up to the caller to provide the correct number of arguments
+                    // with the right types.
+                    let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
+
+                    idx += 1;
+                )+
+
+                // Nonsensical line to make the linter happy.
+                let _ = idx;
+
+
+                let result = closure($($var),+);
+
+                // SAFETY:
+                // * `cif`'s layout is determined by the `AsFfiType` implementations.
+                // * `result_space` is a pointer to a sufficiently large space from libffi.
+                // * `args` are correctly provided if the caller has provided correctly typed arguments.
+                // * `closure` is the closure stored by [`Closure`] using Rust's type system to provide
+                //   guarantees for its signature.
+                unsafe {
+                    closure_write_result(result, result_space);
+                }
+            }
+        }
+    }
+}
+
+impl_closureonceable_for_arguments!(a: A);
+impl_closureonceable_for_arguments!(a: A, b: B);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M, n: N);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M, n: N, o: O);
+impl_closureonceable_for_arguments!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K, l: L, m: M, n: N, o: O, p: P);
 
 /// Helper function to ensure that the result is written correctly for all sizes of `RET`.
 ///

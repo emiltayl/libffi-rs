@@ -3,6 +3,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::ptr;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(miri)]
 use miri::{
@@ -532,6 +533,185 @@ impl<U> ClosureOwned<U> {
     }
 }
 
+/// Represents the data owned by `ClosureOnce<U>` that can only be retrieved once.
+///
+/// This is only meant to be used to implement `high::ClosureOnce` and is therefore not exposed to
+/// external crates.
+#[derive(Debug)]
+pub(crate) struct OnceData<U> {
+    userdata: *mut U,
+    has_been_acquired: AtomicBool,
+}
+
+impl<U> Drop for OnceData<U> {
+    fn drop(&mut self) {
+        // If self has **NOT** been acquired, we drop the userdata.
+        if !self.has_been_acquired.swap(true, Ordering::AcqRel) {
+            // SAFETY: `self.userdata` is a pointer created by `Box::into_raw` owned and managed by
+            // `self`. Since `self.has_been_acquired` was false, self.userdata has not been dropped.
+            unsafe {
+                drop(Box::from_raw(self.userdata));
+            }
+        }
+    }
+}
+
+impl<U> OnceData<U> {
+    pub fn new(userdata: U) -> Self {
+        let userdata = Box::into_raw(Box::new(userdata));
+        let has_been_acquired = AtomicBool::new(false);
+
+        Self {
+            userdata,
+            has_been_acquired,
+        }
+    }
+
+    /// Acquire the userdata, setting the `has_been_acquired` flag and returning `Some(Box<U>)`
+    /// with the `userdata` if the flag had not already been set.
+    ///
+    /// If the flag already had been set, `None` is returned.
+    ///
+    /// If you acquire the `userdata`, you are responsible for dropping it.
+    pub fn acquire(&self) -> Option<Box<U>> {
+        // If the flag was already set, we return None
+        if self.has_been_acquired.swap(true, Ordering::AcqRel) {
+            None
+        } else {
+            // SAFETY: The flag has not been set previously, so nobody should have touched
+            // `userdata`.
+            let userdata = unsafe { Box::from_raw(self.userdata) };
+
+            Some(userdata)
+        }
+    }
+}
+
+/// Represents a closure callable from C that owns its own `userdata`.
+///
+/// This is only meant to be used to implement `high::ClosureOnce` and is therefore not exposed to
+/// external crates.
+#[derive(Debug)]
+pub(crate) struct ClosureOnce<U> {
+    pub(crate) alloc: *mut ffi_closure,
+    pub(crate) code: CodePtr,
+    _cif: Cif,
+    userdata: *mut OnceData<U>,
+}
+
+impl<U> Drop for ClosureOnce<U> {
+    fn drop(&mut self) {
+        // SAFETY: `self.alloc` is allocated using `low::closure_alloc` and should therefore be
+        // freed by `low::closure_free` and only that function.
+        unsafe {
+            closure_free(self.alloc);
+        }
+
+        // SAFETY: `self.userdata` is created from `Box::into_raw` and `self` owns it.
+        unsafe {
+            drop(Box::from_raw(self.userdata));
+        }
+    }
+}
+
+impl<U> ClosureOnce<U> {
+    /// Creates a new closure and a callback that can mutate `userdata`.
+    ///
+    /// # Arguments
+    ///
+    /// - `cif` — describes the calling convention and argument and result types
+    /// - `callback` — the function to call when the closure is invoked
+    /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
+    ///   called
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
+    ///
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
+    ///
+    /// # Result
+    ///
+    /// The new closure.
+    pub fn new_mut<R>(
+        cif: Cif,
+        callback: CallbackMut<OnceData<U>, R>,
+        userdata: U,
+    ) -> Result<Self, Error> {
+        let (alloc, code) = closure_alloc();
+
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
+
+        let userdata = Box::into_raw(Box::new(OnceData::new(userdata)));
+
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues
+        // in the `low::prep_closure_mut` call.
+        unsafe {
+            prep_closure_mut(alloc, cif.cif, callback, userdata, code)?;
+        }
+
+        Ok(ClosureOnce {
+            alloc,
+            code,
+            _cif: cif,
+            userdata,
+        })
+    }
+
+    /// Creates a new closure that can mutate `userdata`. Only used for testing purposes where
+    /// unwinding is needed to prevent aborting the test process.
+    ///
+    /// # Arguments
+    ///
+    /// - `cif` — describes the calling convention and argument and result types
+    /// - `callback` — the function to call when the closure is invoked
+    /// - `userdata` — the value to pass to `callback` along with the arguments when the closure is
+    ///   called
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if libffi was unable to allocate memory in
+    /// `ffi_closure_alloc`.
+    ///
+    /// It will also return an error if `low::prep_closure_mut` fails to create the CIF. This is
+    /// likely caused by a bug in this crate and should be reported.
+    ///
+    /// # Result
+    ///
+    /// The new closure.
+    #[cfg(test)]
+    pub fn new_unwindable_mut<R>(
+        cif: Cif,
+        callback: CallbackUnwindableMut<OnceData<U>, R>,
+        userdata: U,
+    ) -> Result<Self, Error> {
+        let (alloc, code) = closure_alloc();
+
+        if alloc.is_null() {
+            return Err(Error::AllocFailed);
+        }
+
+        let userdata = Box::into_raw(Box::new(OnceData::new(userdata)));
+
+        // SAFETY: `Type` should ensure that no input to this function can cause safety issues
+        // in the `low::prep_closure_mut` call.
+        unsafe {
+            prep_closure_unwindable_mut(alloc, cif.cif, callback, userdata, code)?;
+        }
+
+        Ok(ClosureOnce {
+            alloc,
+            code,
+            _cif: cif,
+            userdata,
+        })
+    }
+}
+
 #[cfg(all(test, not(miri)))]
 mod test {
     use core::ffi::c_void;
@@ -545,13 +725,26 @@ mod test {
     fn closure() {
         let cif = Cif::new(&[Type::U64], Some(Type::U64)).unwrap();
         let env: u64 = 5;
-        let closure = Closure::new(cif, callback, &env).unwrap();
 
-        // SAFETY: `callback` expects one u64 and returns a u64.
-        let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+        {
+            let closure = Closure::new(cif.clone(), callback, &env).unwrap();
 
-        assert_eq!(11, fun(6));
-        assert_eq!(12, fun(7));
+            // SAFETY: `callback` expects one u64 and returns a u64.
+            let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+
+            assert_eq!(11, fun(6));
+            assert_eq!(12, fun(7));
+        }
+
+        {
+            let closure = ClosureOwned::new(cif, callback, env).unwrap();
+
+            // SAFETY: `callback` expects one u64 and returns a u64.
+            let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+
+            assert_eq!(11, fun(6));
+            assert_eq!(12, fun(7));
+        }
     }
 
     unsafe extern "C" fn callback(
@@ -573,12 +766,24 @@ mod test {
     fn rust_lambda() {
         let cif = Cif::new(&[Type::U64, Type::U64], Some(Type::U64)).unwrap();
         let env = |x: u64, y: u64| x + y;
-        let closure = Closure::new(cif, callback2, &env).unwrap();
 
-        // SAFETY: `callback2` expects two u64 arguments and returns a u64.
-        let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+        {
+            let closure = Closure::new(cif.clone(), callback2, &env).unwrap();
 
-        assert_eq!(11, fun(5, 6));
+            // SAFETY: `callback2` expects two u64 arguments and returns a u64.
+            let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+
+            assert_eq!(11, fun(5, 6));
+        }
+
+        {
+            let closure = ClosureOwned::new(cif, callback2, env).unwrap();
+
+            // SAFETY: `callback2` expects two u64 arguments and returns a u64.
+            let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+
+            assert_eq!(11, fun(5, 6));
+        }
     }
 
     unsafe extern "C" fn callback2<F: Fn(u64, u64) -> u64>(
@@ -683,15 +888,66 @@ mod miritest {
     ) {
     }
 
+    unsafe extern "C" fn dummy_callback_mut(
+        _cif: &ffi_cif,
+        _result: *mut MaybeUninit<u32>,
+        _args: *const *const c_void,
+        _userdata: *mut u32,
+    ) {
+    }
+
+    unsafe extern "C" fn dummy_callback_once(
+        _cif: &ffi_cif,
+        _result: *mut MaybeUninit<u32>,
+        _args: *const *const c_void,
+        _userdata: *mut OnceData<u32>,
+    ) {
+    }
+
     #[test]
     fn create_closures() {
         let cif = Cif::new(&[], None).unwrap();
-        let cif2 = cif.clone();
 
         let state = 0u32;
+        let mut mut_state = 0u32;
 
-        let _closure = Closure::new(cif, dummy_callback, &state);
-        let _closure2 = ClosureOwned::new(cif2, dummy_callback, 0u32);
+        let _closure = Closure::new(cif.clone(), dummy_callback, &state);
+        let _closure2 = Closure::new_mut(cif.clone(), dummy_callback_mut, &mut mut_state);
+        let _closure3 = Closure::new(cif.clone(), dummy_callback, &state);
+        let _closure4 = ClosureOwned::new(cif.clone(), dummy_callback, 0u32);
+        let _closure5 = ClosureOwned::new_mut(cif.clone(), dummy_callback_mut, 0u32);
+        let _closure6 = ClosureOnce::new_mut(cif, dummy_callback_once, 0u32);
+    }
+
+    struct PanicDropper;
+    impl Drop for PanicDropper {
+        fn drop(&mut self) {
+            panic!("self dropped!");
+        }
+    }
+
+    unsafe extern "C" fn dummy_panic_dropper_callback_mut(
+        _cif: &ffi_cif,
+        _result: *mut MaybeUninit<u32>,
+        _args: *const *const c_void,
+        _userdata: *mut OnceData<PanicDropper>,
+    ) {
+    }
+
+    #[test]
+    fn do_not_drop_acquired_closureonce() {
+        let cif = Cif::new(&[], None).unwrap();
+        let closure =
+            ClosureOnce::new_mut(cif, dummy_panic_dropper_callback_mut, PanicDropper).unwrap();
+
+        // SAFETY: `userdata` is owned and managed by `self`.
+        let once_data = unsafe { &*closure.userdata };
+
+        if let Some(userdata) = once_data.acquire() {
+            std::mem::forget(userdata);
+        } else {
+            panic!("Closure was already acquired?");
+        }
     }
 }
 

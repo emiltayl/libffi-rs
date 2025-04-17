@@ -7,7 +7,7 @@ mod closures;
 mod foreign_func;
 mod types;
 
-pub use closures::{Closurable, Closure, ClosureMut, ClosureMutable};
+pub use closures::{Closurable, Closure, ClosureMut, ClosureMutable, ClosureOnce, ClosureOnceable};
 pub use foreign_func::{ForeignFunc, ForeignFuncSend, ForeignFuncSendSync, ForeignFuncSync};
 pub use types::{AsFfiType, FfiArgs, FfiRet};
 

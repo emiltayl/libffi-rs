@@ -1,5 +1,5 @@
 mod structs;
 mod traits;
 
-pub use structs::{Closure, ClosureMut};
-pub use traits::{Closurable, ClosureMutable};
+pub use structs::{Closure, ClosureMut, ClosureOnce};
+pub use traits::{Closurable, ClosureMutable, ClosureOnceable};

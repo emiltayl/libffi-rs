@@ -720,10 +720,6 @@ where
     /// * `args` must be a pointer to an array of pointers to arguments with a layout identical to
     ///   the one described by the `cif`.
     /// * `closure` must be a closure with arguments and return values as described by the `cif`.
-    #[expect(
-        private_interfaces,
-        reason = "Automatic trait implementation not intended to be directly used by external crates."
-    )]
     unsafe extern "C" fn call_closure(
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,
@@ -745,10 +741,6 @@ where
     /// [`ClosureOnceable::call_closure`] for documentation.
     #[cfg(test)]
     #[doc(hidden)]
-    #[expect(
-        private_interfaces,
-        reason = "Automatic trait implementation not intended to be directly used by external crates."
-    )]
     unsafe extern "C-unwind" fn call_closure_unwindable(
         cif: &ffi_cif,
         result_space: *mut MaybeUninit<RET>,

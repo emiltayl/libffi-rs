@@ -31,8 +31,8 @@ pub use arg::arg;
 pub use arg::{Arg, OwnedArg};
 
 mod closure;
+pub(crate) use closure::internal::{ClosureOnce, OnceData};
 pub use closure::{Closure, ClosureOwned};
-pub(crate) use closure::{ClosureOnce, OnceData};
 
 mod types;
 pub use types::Type;

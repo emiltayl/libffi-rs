@@ -24,6 +24,8 @@ pub enum Error {
     /// `ffi_prep_cif_var` only supports 64-bit floats (f64/double) and integers of at least `int`
     /// size.
     ArgType,
+    /// Returned from `closure_alloc` in case libffi was unable to allocate the closure.
+    UnableToAllocateClosure,
     /// An unrecognized error code, potentially a bug.
     Unknown(u32),
 }
@@ -504,29 +506,41 @@ unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const u
 /// [`prep_closure`] and [`prep_closure_mut`]. The closure must be deallocated using
 /// [`closure_free`], after which point the code pointer should not be used.
 ///
+/// # Errors
+///
+/// This function returns an error if libffi was unable to allocate the closure.
+///
 /// # Examples
 ///
 /// ```
 /// use libffi::low::{closure_alloc, closure_free};
 ///
-/// let (closure_handle, code_ptr) = closure_alloc();
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
+/// let (closure_handle, code_ptr) = closure_alloc()?;
 ///
 /// // Use closure_alloc here
 ///
 /// // Always be sure to call closure_free after use to free the closure's memory.
 /// unsafe { closure_free(closure_handle) };
+/// #   Ok(())
+/// # }
 /// ```
-pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
+pub fn closure_alloc() -> Result<(*mut ffi_closure, CodePtr), Error> {
     // SAFETY: Call `ffi_closure_alloc` with sufficient size for a `ffi_closure`. This writes back
     // a pointer to `code_pointer`, at which point it can be assumed to be initialized.
     unsafe {
         let mut code_pointer = MaybeUninit::<*mut c_void>::uninit();
         let closure = raw::ffi_closure_alloc(size_of::<ffi_closure>(), code_pointer.as_mut_ptr());
 
-        (
-            closure.cast::<ffi_closure>(),
+        if closure.is_null() {
+            return Err(Error::UnableToAllocateClosure);
+        }
+
+        Ok((
+            closure.cast(),
             CodePtr::from_ptr(code_pointer.assume_init()),
-        )
+        ))
     }
 }
 
@@ -539,13 +553,17 @@ pub fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
 /// ```
 /// use libffi::low::{closure_alloc, closure_free};
 ///
-/// let (closure_handle, code_ptr) = closure_alloc();
+/// # use libffi::low::Error;
+/// # fn main() -> Result<(), Error> {
+/// let (closure_handle, code_ptr) = closure_alloc()?;
 ///
 /// // ...
 ///
 /// unsafe {
 ///     closure_free(closure_handle);
 /// }
+/// #   Ok(())
+/// # }
 /// ```
 ///
 /// # Safety
@@ -686,9 +704,7 @@ pub type RawCallback = unsafe extern "C" fn(
 ///         args.as_mut_ptr(),
 ///     )?;
 ///
-///     let (closure, code) = closure_alloc();
-///
-///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///     let (closure, code) = closure_alloc()?;
 ///
 ///     let add5: extern "C" fn(u64) -> u64 = mem::transmute(code);
 ///
@@ -782,9 +798,7 @@ pub unsafe fn prep_closure<U, R>(
 ///         ptr::null_mut(),
 ///     )?;
 ///
-///     let (closure, code) = closure_alloc();
-///
-///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///     let (closure, code) = closure_alloc()?;
 ///
 ///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
 ///
@@ -898,9 +912,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///         args.as_mut_ptr(),
 ///     )?;
 ///
-///     let (closure, code) = closure_alloc();
-///
-///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///     let (closure, code) = closure_alloc()?;
 ///
 ///     let add5: extern "C" fn(u64) -> u64 = mem::transmute(code);
 ///
@@ -998,9 +1010,7 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///         ptr::null_mut(),
 ///     )?;
 ///
-///     let (closure, code) = closure_alloc();
-///
-///     assert!(!closure.is_null(), "Unable to allocate closure!");
+///     let (closure, code) = closure_alloc()?;
 ///
 ///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
 ///     let mut userdata: u64 = 0;

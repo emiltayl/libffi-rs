@@ -108,11 +108,7 @@ impl<'closure> Closure<'closure> {
         callback: Callback<U, R>,
         userdata: &'closure U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
@@ -154,11 +150,7 @@ impl<'closure> Closure<'closure> {
         callback: CallbackUnwindable<U, R>,
         userdata: &'closure U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure` call.
@@ -199,11 +191,7 @@ impl<'closure> Closure<'closure> {
         callback: CallbackMut<U, R>,
         userdata: &'closure mut U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
@@ -245,11 +233,7 @@ impl<'closure> Closure<'closure> {
         callback: CallbackUnwindableMut<U, R>,
         userdata: &'closure mut U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         // SAFETY: `Type` should ensure that no input to this function can cause safety issues in
         // the `low::prep_closure_mut` call.
@@ -348,11 +332,7 @@ impl<U> ClosureOwned<U> {
     ///
     /// The new closure.
     pub fn new<R>(cif: Cif, callback: Callback<U, R>, userdata: U) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         let userdata = Box::into_raw(Box::new(userdata));
 
@@ -396,11 +376,7 @@ impl<U> ClosureOwned<U> {
         callback: CallbackUnwindable<U, R>,
         userdata: U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         let userdata = Box::into_raw(Box::new(userdata));
 
@@ -439,11 +415,7 @@ impl<U> ClosureOwned<U> {
     ///
     /// The new closure.
     pub fn new_mut<R>(cif: Cif, callback: CallbackMut<U, R>, userdata: U) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         let userdata = Box::into_raw(Box::new(userdata));
 
@@ -487,11 +459,7 @@ impl<U> ClosureOwned<U> {
         callback: CallbackUnwindableMut<U, R>,
         userdata: U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         let userdata = Box::into_raw(Box::new(userdata));
 
@@ -640,11 +608,7 @@ impl<U> ClosureOnce<U> {
         callback: CallbackMut<OnceData<U>, R>,
         userdata: U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         let userdata = Box::into_raw(Box::new(OnceData::new(userdata)));
 
@@ -689,11 +653,7 @@ impl<U> ClosureOnce<U> {
         callback: CallbackUnwindableMut<OnceData<U>, R>,
         userdata: U,
     ) -> Result<Self, Error> {
-        let (alloc, code) = closure_alloc();
-
-        if alloc.is_null() {
-            return Err(Error::AllocFailed);
-        }
+        let (alloc, code) = closure_alloc()?;
 
         let userdata = Box::into_raw(Box::new(OnceData::new(userdata)));
 
@@ -956,10 +916,10 @@ mod miri {
     use super::*;
     use crate::low::{RawCallback, ffi_cif};
 
-    pub(super) fn closure_alloc() -> (*mut ffi_closure, CodePtr) {
+    pub(super) fn closure_alloc() -> Result<(*mut ffi_closure, CodePtr), crate::low::Error> {
         let closure = Box::into_raw(Box::new(ffi_closure::default()));
 
-        (closure, CodePtr(ptr::null_mut()))
+        Ok((closure, CodePtr(ptr::null_mut())))
     }
 
     pub(super) unsafe fn closure_free(closure: *mut ffi_closure) {

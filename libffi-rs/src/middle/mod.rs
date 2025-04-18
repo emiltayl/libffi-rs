@@ -44,8 +44,6 @@ pub use builder::Builder;
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Error {
-    /// Returned if allocating a closure failed.
-    AllocFailed,
     /// An error from the underlying libffi library.
     Libffi(crate::low::Error),
     /// Returned if [`Cif::call`] is called with fewer or more arguments than the number of

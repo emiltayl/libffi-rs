@@ -120,7 +120,7 @@ pub enum OwnedArg {
     F32(f32),
     /// A owned `f64`
     F64(f64),
-    /// A owned pointe
+    /// A owned pointer
     Pointer(*mut c_void),
 }
 

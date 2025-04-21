@@ -607,6 +607,43 @@ mod test {
         ));
     }
 
+    macro_rules! gen_owned_arg_identity_fn_test {
+        ($fn:ident($ty:ty = $val:expr, $ffity:expr)) => {{
+            let cif = Cif::new(&[$ffity], Some($ffity)).unwrap();
+            let orig: $ty = $val;
+            // SAFETY: It is assumed that $fn is a valid function accepting $ty and returning $ty.
+            let result: $ty = unsafe {
+                cif.call(CodePtr($fn as *mut _), &[Arg::owned(orig)])
+                    .unwrap()
+            };
+            assert_eq!(orig, result);
+        }};
+    }
+
+    #[expect(
+        clippy::float_cmp,
+        reason = "Direct comparison of floats that have not been modified."
+    )]
+    #[test]
+    fn test_owned_arg_identity_functions() {
+        let mut num: i32 = 0;
+
+        gen_owned_arg_identity_fn_test!(identity_i8(i8 = 0x55, Type::I8));
+        gen_owned_arg_identity_fn_test!(identity_u8(u8 = 0xAA, Type::U8));
+        gen_owned_arg_identity_fn_test!(identity_i16(i16 = 0x5544, Type::I16));
+        gen_owned_arg_identity_fn_test!(identity_u16(u16 = 0xAABB, Type::U16));
+        gen_owned_arg_identity_fn_test!(identity_i32(i32 = 0x5544_3322, Type::I32));
+        gen_owned_arg_identity_fn_test!(identity_u32(u32 = 0xAABB_CCDD, Type::U32));
+        gen_owned_arg_identity_fn_test!(identity_i64(i64 = 0x5544_3322_1100_AABB, Type::I64));
+        gen_owned_arg_identity_fn_test!(identity_u64(u64 = 0xAABB_CCDD_EEFF_0011, Type::U64));
+        gen_owned_arg_identity_fn_test!(identity_isize(isize = 0x5544_3322, Type::Isize));
+        gen_owned_arg_identity_fn_test!(identity_usize(usize = 0xAABB_CCDD, Type::Usize));
+        gen_owned_arg_identity_fn_test!(identity_f32(f32 = f32::consts::PI, Type::F32));
+        gen_owned_arg_identity_fn_test!(identity_f64(f64 = f64::consts::TAU, Type::F64));
+        gen_owned_arg_identity_fn_test!(identity_const_ptr(*const i32 = &raw const num, Type::Pointer));
+        gen_owned_arg_identity_fn_test!(identity_mut_ptr(*mut i32 = &raw mut num, Type::Pointer));
+    }
+
     /// Test variadic cifs by calling `snprintf`. I could not seem to figure out how to get
     /// _snprintf linked with msvc, so I am leaving it out for now.
     #[cfg(not(target_env = "msvc"))]
@@ -704,32 +741,65 @@ mod miritest {
         let cif = cif_1.clone();
         let cif_2 = cif.clone();
         let cif_3 = cif_2.clone();
+        let cif_4 = cif_2.clone();
         drop(cif);
 
-        let arguments = [
-            Arg::borrowed(&1i8),
-            Arg::borrowed(&2u16),
-            Arg::borrowed(&3i32),
-            Arg::borrowed(&4u64),
-            Arg::borrowed(&ptr::null::<c_void>()),
-            Arg::borrowed(&6f32),
-            Arg::borrowed(&7f64),
-            Arg::borrowed(&8u8),
-        ];
+        // Test with `Arg::Borrowed`.
+        {
+            let arguments = [
+                Arg::borrowed(&1i8),
+                Arg::borrowed(&2u16),
+                Arg::borrowed(&3i32),
+                Arg::borrowed(&4u64),
+                Arg::borrowed(&ptr::null::<c_void>()),
+                Arg::borrowed(&6f32),
+                Arg::borrowed(&7f64),
+                Arg::borrowed(&8u8),
+            ];
 
-        // SAFETY: [`Cif::call`] is called with the correct number of arguments with (mostly) the
-        // correct type. A struct with no members cannot be read anyways?
-        unsafe {
-            cif_1
-                .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
-                .unwrap();
-            cif_2
-                .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
-                .unwrap();
-            drop(cif_2);
-            cif_3
-                .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
-                .unwrap();
+            // SAFETY: [`Cif::call`] is called with the correct number of arguments with (mostly)
+            // the correct type. A struct with no members cannot be read anyways?
+            unsafe {
+                cif_1
+                    .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                    .unwrap();
+                cif_2
+                    .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                    .unwrap();
+                drop(cif_2);
+                cif_3
+                    .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                    .unwrap();
+            }
+        }
+
+        // Test with `Arg::Owned`.
+        {
+            let arguments = [
+                Arg::owned(1i8),
+                Arg::owned(2u16),
+                Arg::owned(3i32),
+                Arg::owned(4u64),
+                Arg::owned(ptr::null::<c_void>()),
+                Arg::owned(6f32),
+                Arg::owned(7f64),
+                Arg::owned(8u8),
+            ];
+
+            // SAFETY: [`Cif::call`] is called with the correct number of arguments with (mostly)
+            // the correct type. A struct with no members cannot be read anyways?
+            unsafe {
+                cif_1
+                    .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                    .unwrap();
+                cif_4
+                    .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                    .unwrap();
+                drop(cif_4);
+                cif_3
+                    .call::<u32>(CodePtr(dummy_function as *mut _), &arguments)
+                    .unwrap();
+            }
         }
     }
 

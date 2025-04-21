@@ -114,24 +114,15 @@ where
         }
     }
 
-    /// Wrap `self` in a wrapper that is `Send`. It is up to the caller to make sure that the
-    /// function provided when creating `self` can safely be sent to another thread and called from
-    /// multiple threads simultaneously.
-    pub fn send(self) -> ForeignFuncSend<ARGS, RET> {
-        ForeignFuncSend(self)
-    }
-
-    /// Wrap `self` in a wrapper that is `Sync`. It is up to the caller to make sure that the
-    /// function provided when creating `self` can safely be called from multiple threads
-    /// simultaneously.
-    pub fn sync(self) -> ForeignFuncSync<ARGS, RET> {
-        ForeignFuncSync(self)
-    }
-
     /// Wrap `self` in a wrapper that is `Send` and `Sync`. It is up to the caller to make sure that
     /// the function provided when creating `self` can safely be sent to another thread and called
     /// from multiple threads simultaneously.
-    pub fn send_sync(self) -> ForeignFuncSendSync<ARGS, RET> {
+    /// 
+    /// # Safety
+    /// 
+    /// The function must be safe to call from other threads. It must also be thread safe, making
+    /// it safe to call the function from several threads simultaneously.
+    pub unsafe fn send_sync(self) -> ForeignFuncSendSync<ARGS, RET> {
         ForeignFuncSendSync(self)
     }
 
@@ -161,93 +152,6 @@ where
                 .unwrap_or_else(|_| unreachable!())
         }
     }
-}
-
-/// A [`ForeignFunc`] that is safe to send to other threads. It must be safe to send `fn_ptr` to
-/// another thread, and call it from multiple threads simultaneously as `ForeignFunc` is `Clone`.
-///
-/// Create a `ForeignFuncSend` by calling [`ForeignFunc::send`] on a [`ForeignFunc`] object.
-///
-/// See [`ForeignFunc`] for more details.
-#[repr(transparent)]
-#[derive(Clone, Debug)]
-pub struct ForeignFuncSend<ARGS, RET>(ForeignFunc<ARGS, RET>)
-where
-    ARGS: for<'args> FfiArgs<'args>,
-    RET: FfiRet;
-
-impl<ARGS, RET> ForeignFuncSend<ARGS, RET>
-where
-    ARGS: for<'args> FfiArgs<'args>,
-    RET: FfiRet,
-{
-    /// This function works identical to [`ForeignFunc::call`], see its documentation for more
-    /// details.
-    ///
-    /// # Safety
-    ///
-    /// In addition to the requirements listed in
-    /// [`ForeignFunc::call`'s safety documentation](ForeignFunc::call#safety), it must be safe to
-    /// send `self` to other threads and execute `ForeignFuncSend::call` from multiple threads
-    /// simultaneously.
-    #[inline]
-    pub unsafe fn call(&self, args: ARGS) -> RET {
-        // SAFETY: It is up to the caller to ensure the safety requirements documented for this
-        // function.
-        unsafe { self.0.call(args) }
-    }
-}
-
-// SAFETY: It is up to the creator of `ForeignFuncSend` to guarantee that the [`ForeignFunc`] is
-// `Send`.
-unsafe impl<ARGS, RET> Send for ForeignFuncSend<ARGS, RET>
-where
-    ARGS: for<'args> FfiArgs<'args>,
-    RET: FfiRet,
-{
-}
-
-/// A [`ForeignFunc`] that is safe to share with other threads. It must be safe to call it from
-/// multiple threads simultaneously.
-///
-/// Create a `ForeignFuncSync` by calling [`ForeignFunc::sync`] on a [`ForeignFunc`] object.
-///
-/// See [`ForeignFunc`] for more details.
-#[repr(transparent)]
-#[derive(Clone, Debug)]
-pub struct ForeignFuncSync<ARGS, RET>(ForeignFunc<ARGS, RET>)
-where
-    ARGS: for<'args> FfiArgs<'args>,
-    RET: FfiRet;
-
-impl<ARGS, RET> ForeignFuncSync<ARGS, RET>
-where
-    ARGS: for<'args> FfiArgs<'args>,
-    RET: FfiRet,
-{
-    /// This function works identical to [`ForeignFunc::call`], see its documentation for more
-    /// details.
-    ///
-    /// # Safety
-    ///
-    /// In addition to the requirements listed in
-    /// [`ForeignFunc::call`'s safety documentation](ForeignFunc::call#safety), it must be safe to
-    /// execute `ForeignFuncSend::call` from multiple threads simultaneously.
-    #[inline]
-    pub unsafe fn call(&self, args: ARGS) -> RET {
-        // SAFETY: It is up to the caller to ensure the safety requirements documented for this
-        // function.
-        unsafe { self.0.call(args) }
-    }
-}
-
-// SAFETY: It is up to the creator of `ForeignFuncSync` to guarantee that the [`ForeignFunc`] is
-// `Sync`.
-unsafe impl<ARGS, RET> Sync for ForeignFuncSync<ARGS, RET>
-where
-    ARGS: for<'args> FfiArgs<'args>,
-    RET: FfiRet,
-{
 }
 
 /// A [`ForeignFunc`] that is safe to send to, and share with other threads. It must be safe to
@@ -302,4 +206,230 @@ where
     ARGS: for<'args> FfiArgs<'args>,
     RET: FfiRet,
 {
+}
+
+#[cfg(all(test, not(miri)))]
+mod test {
+    use crate::{high::AsFfiType, middle::Type};
+
+    use super::*;
+
+    #[repr(C)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct SmallFfiStruct {
+        pub number: i32,
+        pub tag: u8,
+    }
+
+    // SAFETY: SmallFfiStruct is `repr(C)` and contains an `i32` and a `u8`.
+    unsafe impl AsFfiType for SmallFfiStruct {
+        fn as_ffi_type() -> Type {
+            Type::structure(&[Type::I32, Type::U8])
+        }
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    pub struct LargeFfiStruct {
+        pub a: u64,
+        pub b: u64,
+        pub c: u64,
+        pub d: u64,
+    }
+
+    // SAFETY: LargeFfiStruct is `repr(C)` and contains four `u64`s.
+    unsafe impl AsFfiType for LargeFfiStruct {
+        fn as_ffi_type() -> Type {
+            Type::structure(&[Type::U64, Type::U64, Type::U64, Type::U64])
+        }
+    }
+
+
+    /// Generate code to test calling `ForeignFunc` with an arbitrary number of arguments and
+    /// optionally a result value.
+    ///
+    /// If the macro is called with a return value, it will be recursively call itself without the
+    /// return value, but the same arguments. If the macro is called without a return value, it will
+    /// recursively call itself with the first argument as the return value and one argument less.
+    ///
+    /// A return value is added as an optional prefix: `$retty:ty = $retval:expr =>`.
+    ///
+    /// Arguments are added on the following format: `$($name:ident: $ty:ty = $val:expr),+`.
+    macro_rules! generate_foreign_func_test {
+        () => {
+            {
+                extern "C" fn extern_fn() {}
+
+                let foreign_func = ForeignFunc::<(), ()>::new(CodePtr(extern_fn as *mut _));
+                // SAFETY:
+                // * `extern_fn` is defined as a `extern "C"` function that does not accept any
+                //   parameters and does not return anything.
+                // * `extern_fn` does not do anything, and is therefore thread safe.
+                unsafe {
+                    foreign_func.call(());
+
+                    let send_sync = foreign_func.send_sync();
+                    send_sync.call(());
+                }
+            }
+        };
+
+        // Output type needs to be put first to allow for an arbitrary number of arguments.
+        ($ty:ty = $val:expr => ()) => {
+            {
+                extern "C" fn extern_fn() -> $ty {
+                    $val
+                }
+
+                let foreign_func = ForeignFunc::<(), $ty>::new(CodePtr(extern_fn as *mut _));
+                // SAFETY:
+                // * `extern_fn` is defined as a `extern "C"` function that does not accept any
+                //   parameters and returns a value of the type `$ty`. perform
+                // * `extern_fn` only returns a value, it does not perform any actions that are not
+                //   thread safe.
+                unsafe {
+                    let result = foreign_func.call(());
+                    assert_eq!(result, $val);
+
+                    let send_sync = foreign_func.send_sync();
+                    let result = send_sync.call(());
+                    assert_eq!(result, $val);
+                }
+            }
+
+            generate_foreign_func_test!();
+        };
+
+        ($name:ident: $ty:ty = $val:expr) => {
+            {
+                extern "C" fn extern_fn($name: $ty) {
+                    assert_eq!($name, $val);
+                }
+
+                let foreign_func = ForeignFunc::<($ty,), ()>::new(CodePtr(extern_fn as *mut _));
+                // SAFETY:
+                // * `extern_fn` is defined as a `extern "C"` function that accepts one parameter of
+                //   the value `$ty` and does not return anything.
+                // * `extern_fn` only compares a parameter to its expected values, it does not
+                //   perform any actions that are not thread safe.
+                unsafe {
+                    foreign_func.call(($val,));
+
+                    let send_sync = foreign_func.send_sync();
+                    send_sync.call(($val,));
+                }
+            }
+
+            generate_foreign_func_test!($ty = $val => ());
+        };
+
+        ($retty:ty = $retval:expr => $name:ident: $ty:ty = $val:expr) => {
+            {
+                extern "C" fn extern_fn($name: $ty) -> $retty {
+                    assert_eq!($name, $val);
+                    $retval
+                }
+
+                let foreign_func = ForeignFunc::<($ty,), $retty>::new(CodePtr(extern_fn as *mut _));
+                // SAFETY:
+                // * `extern_fn` is defined as a `extern "C"` function that accepts a single
+                //   parameter of the type `$ty` and returns a value of the type `$retty`.
+                // * `extern_fn` only compares a parameter to its expected value and returns a
+                //   value, it does not perform any actions that are not thread safe.
+                unsafe {
+                    let result = foreign_func.call(($val,));
+                    assert_eq!(result, $retval);
+
+                    let send_sync = foreign_func.send_sync();
+                    let result = send_sync.call(($val,));
+                    assert_eq!(result, $retval);
+                }
+            }
+
+            generate_foreign_func_test!($name: $ty = $val);
+        };
+
+        ($name:ident: $ty:ty = $val:expr, $($restname:ident: $restty:ty = $restval:expr),+) => {
+            {
+                extern "C" fn extern_fn($name: $ty, $($restname: $restty),+) {
+                    assert_eq!($name, $val);
+                    $(assert_eq!($restname, $restval);)+
+                }
+
+                let foreign_func = ForeignFunc::<($ty, $($restty,)+), ()>::new(CodePtr(extern_fn as *mut _));
+                // SAFETY:
+                // * `extern_fn` is defined as a `extern "C"` function that accepts parameters of
+                //   the types `($ty, $($restty,)+)` and does not return anything.
+                // * `extern_fn` only compares parameters to their expected values, it does not
+                //   perform any actions that are not thread safe.
+                unsafe {
+                    foreign_func.call(($val, $($restval),+));
+
+                    let send_sync = foreign_func.send_sync();
+                    send_sync.call(($val, $($restval),+));
+                }
+            }
+
+            generate_foreign_func_test!($ty = $val => $($restname: $restty = $restval),+);
+        };
+
+        ($retty:ty = $retval:expr => $name:ident: $ty:ty = $val:expr, $($restname:ident: $restty:ty = $restval:expr),+) => {
+            {
+                extern "C" fn extern_fn($name: $ty, $($restname: $restty),+) -> $retty {
+                    assert_eq!($name, $val);
+                    $(assert_eq!($restname, $restval);)+
+                    $retval
+                }
+
+                let foreign_func = ForeignFunc::<($ty, $($restty,)+), $retty>::new(CodePtr(extern_fn as *mut _));
+                // SAFETY:
+                // * `extern_fn` is defined as a `extern "C"` function that accepts parameters of
+                //   the types `($ty, $($restty,)+)` and returns a value of the type `$retty`.
+                // * `extern_fn` only compares parameters to their expected values and returns a
+                //   value, it does not perform any actions that are not thread safe.
+                unsafe {
+                    let result = foreign_func.call(($val, $($restval),+));
+                    assert_eq!(result, $retval);
+
+                    let send_sync = foreign_func.send_sync();
+                    let result = send_sync.call(($val, $($restval),+));
+                    assert_eq!(result, $retval);
+                }
+            }
+
+            generate_foreign_func_test!($name: $ty = $val, $($restname: $restty = $restval),+);
+        };
+    }
+
+    #[expect(
+        clippy::float_cmp,
+        reason = "Direct comparison of floats that have not been modified."
+    )]
+    #[test]
+    fn test_all_arg_and_ret_types() {
+        generate_foreign_func_test!(
+            i8 = 0x55 =>
+            a: i8 = 0x55,
+            b: u8 = 0xAA,
+            c: i16 = 0x5555,
+            d: u16 = 0xAAAA,
+            e: i32 = 0x5555_5555,
+            f: u32 = 0xAAAA_AAAA,
+            g: i64 = 0x5555_5555_5555_5555,
+            h: u64 = 0xAAAA_AAAA_AAAA_AAAA,
+            i: isize = 0x5555_5555,
+            j: usize = 0xAAAA_AAAA,
+            k: f32 = std::f32::consts::PI,
+            l: f64 = std::f64::consts::TAU,
+            m: *const i32 = 0xDEAD_BEEF as *const i32,
+            n: SmallFfiStruct = SmallFfiStruct { number: 0x5555_5555, tag: 0xAA },
+            o: LargeFfiStruct = LargeFfiStruct {
+                a: 0xAAAA_AAAA_AAAA_AAAA,
+                b: 0xAAAA_AAAA_AAAA_AAAA,
+                c: 0xAAAA_AAAA_AAAA_AAAA,
+                d: 0xAAAA_AAAA_AAAA_AAAA,
+            },
+            p: u8 = 0
+        );
+    }
 }

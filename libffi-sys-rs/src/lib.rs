@@ -15,9 +15,15 @@
 //! `libffi-sys` can either build its own copy of the libffi C library [from
 //! github](https://github.com/libffi/libffi) or it can link against your system’s C libffi. By
 //! default it builds its own because many systems ship with an old C libffi; this requires that you
-//! have a working make, C compiler, automake, and autoconf first. If your system libffi is new
+//! have a working make, C compiler, automake, and autoconf first. If your system libffi is recent
 //! enough (v3.2.1 as of October 2019), you can instead enable the `system` feature flag to use
-//! that. If you want this crate to build a C libffi for you, add
+//! that.
+//!
+//! On Windows, it is not supported to link against a shared libffi library as it is generally not
+//! available. Automake and autoconf are not required when building for the `x86_64-pc-windows-msvc`
+//! and `i686-pc-windows-msvc` targets.
+//!
+//! If you want this crate to build a C libffi for you, add
 //!
 //! ```toml
 //! [dependencies]
@@ -59,7 +65,11 @@ use fmt::Formatter;
 
 pub type ffi_arg = c_ulong;
 pub type ffi_sarg = c_long;
+
+/// The type used to convey the ABI of a function.
 pub type ffi_abi = u32;
+
+/// The return type of `libffi`'s functions that may return an error.
 pub type ffi_status = u32;
 pub type ffi_type_enum = u16;
 
@@ -95,6 +105,52 @@ pub const ffi_status_FFI_BAD_ARGTYPE: ffi_status = 3;
 pub const ffi_type_enum_STRUCT: ffi_type_enum = 13;
 pub const ffi_type_enum_COMPLEX: ffi_type_enum = 15;
 
+/// A struct used by `libffi` to describe types and their memory layout.
+///
+/// New `ffi_type` variables should only be constructed for describing the layout of custom
+/// structs. For plain scalar types it is recommended to refer to the `static` variables defined
+/// by libffi instead of creating new `ffi_type`s.
+///
+/// When creating new `ffi_type`s, the `size` and `alignment` fields should be left at their
+/// default values, as `libffi` will fill out these fields during [`ffi_prep_cif`].
+///
+/// # Example
+///
+/// ```
+/// use std::ptr;
+/// // Uncomment the line below if using libffi
+/// // use libffi_sys::ffi_type, type_tag, types};
+///
+/// #[repr(C)]
+/// struct CustomStruct {
+///     num: u32,
+///     num2: i64,
+///     float_num: f32,
+/// }
+///
+/// // We need to describe the types of the values in `CustomStruct`. The order must be the same as
+/// // the order in the struct definition. Note that this array must be alive and at the same
+/// // address for the entire lifetime of the resulting `ffi_type`.
+/// let mut elements_array = [
+///     // `libffi::low::types::uint32`, `sint64`, and `float` can be used instead if using libffi
+///     &raw mut libffi_sys::ffi_type_uint32,
+///     &raw mut libffi_sys::ffi_type_sint64,
+///     &raw mut libffi_sys::ffi_type_float,
+///     // The last element in the array must be a `NULL` since `ffi_type` does not store the number
+///     // of elements in the struct.
+///     ptr::null_mut(),
+/// ];
+///
+/// let mut custom_struct_description = libffi_sys::ffi_type {
+///     // `libffi::low::type_tag::STRUCT` can be used instead if using libffi
+///     type_: libffi_sys::FFI_TYPE_STRUCT,
+///     elements: elements_array.as_mut_ptr(),
+///     ..Default::default()
+/// };
+///
+/// // `custom_struct_description` can now be used in a [`ffi_cif`] to send `CustomStruct` as an
+/// // argument or receive a `CustomStruct` as response.
+/// ```
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ffi_type {
@@ -111,6 +167,10 @@ impl Default for ffi_type {
     }
 }
 
+/// A struct used by `libffi` to describe a function's ABI and type signature.
+///
+/// It is recommended to not fill out the fields in a `ffi_cif` manually, but rather supply the
+/// correct arguments to [`ffi_prep_cif`].
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ffi_cif {
@@ -200,6 +260,14 @@ pub union ffi_trampoline {
     pub ftramp: *mut c_void,
 }
 
+/// A struct used by `libffi` to describe and manage closures.
+///
+/// Closures in libffi can be used to create function pointers to functions with arbitrary
+/// signatures that can also have some custom data embedded.
+///
+/// `ffi_closure` should not be created manually. Instead, [`ffi_closure_alloc`] should be invoked
+/// to allocate memory for the `ffi_closure` before its fields are populated by
+/// [`ffi_prep_closure`].
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct ffi_closure {

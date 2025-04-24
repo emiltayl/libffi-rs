@@ -1,148 +1,33 @@
-//! A low-level wrapping of libffi, this layer makes no attempts at safety, but tries to provide a
-//! somewhat more idiomatic interface.
+//! The `low` module provides thin wrappers around [libffi]'s functions for
+//! direct, low-level interactions with the libffi API from Rust.
 //!
-//! This module also re-exports types and constants necessary for using the library, so it should
-//! not be generally necessary to use the `raw` module. While this is a bit “Rustier” than
-//! [`raw`], I’ve avoided drastic renaming in favor of hewing close to the libffi API.
-//! See [`middle`](crate::middle) for an easier-to-use approach.
+//! This module requires manual memory management to ensure all memory used by libffi is valid
+//! and accessible. For automatic memory management, consider using the [`middle`] or [`high`]
+//! modules.
+//!
+//! Essential types and constants for using libffi are re-exported by this module, reducing the need
+//! to use the [`raw`] module directly. While `low` is slightly more idiomatic to Rust than [`raw`],
+//! function and symbol names remain close to their original libffi counterparts.
+//!
+//! For an example of how to use the `low` module to call FFI functions, see [`call`].
+//!
+//! [libffi]: https://github.com/libffi/libffi/
+//! [`call`]: `crate::low::call`#example
+//! [`middle`]: `crate::middle`
+//! [`high`]: `crate::high`
 
 use core::ffi::{c_uint, c_void};
 use core::mem::{MaybeUninit, transmute};
 
+/// A constant with the default ABI of the target platform.
+pub use raw::ffi_abi_FFI_DEFAULT_ABI;
+pub use raw::{ffi_abi, ffi_cif, ffi_closure, ffi_status, ffi_type};
+
 use crate::raw;
 
-/// Errors reported by libffi.
-#[non_exhaustive]
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Error {
-    /// Given a bad or unsupported type representation.
-    Typedef,
-    /// Given a bad or unsupported ABI.
-    Abi,
-    /// Given invalid data structures to `ffi_prep_cif_var`.
-    ///
-    /// `ffi_prep_cif_var` only supports 64-bit floats (f64/double) and integers of at least `int`
-    /// size.
-    ArgType,
-    /// Returned from `closure_alloc` in case libffi was unable to allocate the closure.
-    UnableToAllocateClosure,
-    /// An unrecognized error code, potentially a bug.
-    Unknown(u32),
-}
-
-// Converts the raw status type to a `Result`.
-fn status_to_result<R>(status: ffi_status, good: R) -> Result<R, Error> {
-    match status {
-        raw::ffi_status_FFI_OK => Ok(good),
-        raw::ffi_status_FFI_BAD_TYPEDEF => Err(Error::Typedef),
-        raw::ffi_status_FFI_BAD_ABI => Err(Error::Abi),
-        raw::ffi_status_FFI_BAD_ARGTYPE => Err(Error::ArgType),
-        _ => Err(Error::Unknown(status)),
-    }
-}
-
-/// Wraps a function pointer of unknown type.
+/// Re-exports of the [`ffi_type`] objects used to describe argument and result types.
 ///
-/// This is used to make the API a bit easier to understand, and as a simple type lint. As a
-/// `repr(C)` struct of one element, it should be safe to transmute between `CodePtr` and
-/// `*mut c_void`, or between collections thereof.
-#[derive(Clone, Copy, Debug, Hash)]
-#[repr(C)]
-pub struct CodePtr(pub *mut c_void);
-
-// How useful is this type? Does it need all the methods?
-impl CodePtr {
-    /// Initializes a code pointer from a function pointer.
-    ///
-    /// This is useful mainly for talking to C APIs that take untyped callbacks specified in the API
-    /// as having type `void(*)()`.
-    pub fn from_fun(fun: unsafe extern "C" fn()) -> Self {
-        CodePtr(fun as *mut c_void)
-    }
-
-    /// Initializes a code pointer from a void pointer.
-    ///
-    /// This is the other common type used in APIs (or at least in libffi) for untyped callback
-    /// arguments.
-    pub fn from_ptr(fun: *const c_void) -> Self {
-        CodePtr(fun.cast_mut())
-    }
-
-    /// Gets the code pointer typed as a C function pointer.
-    ///
-    /// This is useful mainly for talking to C APIs that take untyped callbacks specified in the
-    /// API as having type `void(*)()`.
-    ///
-    /// # Safety
-    ///
-    /// There is no checking that the returned type reflects the actual parameter and return types
-    /// of the function. Unless the C function actually has type `void(*)()`, it will need to be
-    /// cast before it is called.
-    ///
-    /// You should also be sure that the `CodePtr` was properly initialized, as there is nothing
-    /// preventing it from containing a NULL pointer.
-    pub unsafe fn as_fun(&self) -> &unsafe extern "C" fn() {
-        // SAFETY: See this functions' safety section.
-        unsafe { self.as_any_ref_() }
-    }
-
-    /// Gets the code pointer typed as a "safe" C function pointer.
-    ///
-    /// This is useful mainly for talking to C APIs that take untyped callbacks specified in the
-    /// API as having type `void(*)()`.
-    ///
-    /// # Safety
-    ///
-    /// There isn't necessarily anything actually safe about the resulting function pointer — it is
-    /// up to the caller to know what they're doing within the unsafety boundary, or undefined
-    /// behavior may result. In particular, there is no checking that the returned type reflects the
-    /// actual parameter and return types of the function. Unless the C function actually has type
-    /// `void(*)()`, it will need to be cast before it is called.
-    ///
-    /// You should also be sure that the `CodePtr` was properly initialized, as there is nothing
-    /// preventing it from containing a NULL pointer.
-    pub unsafe fn as_safe_fun(&self) -> &extern "C" fn() {
-        // SAFETY: See this functions' safety section.
-        unsafe { self.as_any_ref_() }
-    }
-
-    pub(crate) unsafe fn as_any_ref_<T>(&self) -> &T {
-        // SAFETY: May attempt to create a reference from a NULL pointer, should probably be fixed.
-        #[allow(
-            clippy::ptr_as_ptr,
-            clippy::borrow_as_ptr,
-            clippy::ref_as_ptr,
-            reason = "CodePtr should probably be reworked, not spending too much time making this prettier until then."
-        )]
-        unsafe {
-            &*(&self.0 as *const _ as *const T)
-        }
-    }
-
-    /// Gets the code pointer typed as a `const void*`.
-    ///
-    /// This is the other common type used in APIs (or at least in libffi) for untyped callback
-    /// arguments.
-    pub fn as_ptr(self) -> *const c_void {
-        self.0
-    }
-
-    /// Gets the code pointer typed as a `void*`.
-    ///
-    /// This is the other common type used in APIs (or at least in libffi) for untyped callback
-    /// arguments.
-    pub fn as_mut_ptr(self) -> *mut c_void {
-        self.0
-    }
-}
-
-pub use raw::{
-    ffi_abi, ffi_abi_FFI_DEFAULT_ABI, ffi_arg, ffi_cif, ffi_closure, ffi_sarg, ffi_status, ffi_type,
-};
-
-/// Re-exports the [`ffi_type`] objects used to describe the types of arguments and results.
-///
-/// These are from [the raw layer](crate::raw), but are renamed by removing the `ffi_type_` prefix.
+/// These are from [the raw module](crate::raw), but are renamed by removing the `ffi_type_` prefix.
 /// For example, [`raw::ffi_type_void`] becomes [`types::void`].
 pub mod types {
     #[cfg(feature = "complex")]
@@ -163,15 +48,14 @@ pub mod types {
     };
 }
 
-/// Type tags used in constructing and inspecting [`ffi_type`]s.
+/// Type tags used when constructing and inspecting [`ffi_type`]s.
 ///
-/// For atomic types this tag doesn’t matter because libffi predeclares
-/// [an instance of each one](mod@types). However, for composite types (structs and complex
-/// numbers), we need to create a new instance of the [`ffi_type`] struct. In particular, the
-/// `type_` field contains a value that indicates what kind of type is represented, and we use these
-/// values to indicate that that we are describing a struct or complex type.
+/// It is not necessary to use these type tags when passing plain scalar types (integers, floats,
+/// and pointers) to function as libffi pre-defines [`ffi_type`s for these types](mod@types).
+/// However, for composite types (I.E. structs), new instances of the [`ffi_type`] struct must be
+/// created.
 ///
-/// # Examples
+/// # Example
 ///
 /// Suppose we have the following C struct:
 ///
@@ -182,21 +66,19 @@ pub mod types {
 /// };
 /// ```
 ///
-/// To pass it by value to a C function we can construct an
-/// `ffi_type` as follows using `type_tag::STRUCT`:
+/// To pass it by value to a function using libffi, the appropriate `ffi_type` can be constructed
+/// as follows using `type_tag::STRUCT`:
 ///
 /// ```
 /// use std::ptr;
 ///
 /// use libffi::low::{ffi_type, type_tag, types};
 ///
-/// let mut elements = unsafe {
-///     [
-///         &raw mut types::uint16,
-///         &raw mut types::uint64,
-///         ptr::null_mut::<ffi_type>(),
-///     ]
-/// };
+/// let mut elements = [
+///     &raw mut types::uint16,
+///     &raw mut types::uint64,
+///     ptr::null_mut(),
+/// ];
 ///
 /// let my_struct: ffi_type = ffi_type {
 ///     type_: type_tag::STRUCT,
@@ -241,26 +123,129 @@ pub mod type_tag {
     pub const COMPLEX: u16 = raw::FFI_TYPE_COMPLEX;
 }
 
-/// Initalizes a CIF (Call Interface) with the given ABI
-/// and types.
+/// Represents errors that may occur when interacting with libffi.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Error {
+    /// Returned if an invalid, malformed, or otherwise unsupported type in provided to libffi.
+    Typedef,
+    /// Returned if an unknown or unsupported ABI was provided to this function. In general, this
+    /// error should not be encountered unless ABIs are referred to using numbers instead of the
+    /// `ffi_abi_*` constants in [`raw`].
+    Abi,
+    /// Returned if invalid data types are provided to `ffi_prep_cif_var`.
+    ///
+    /// `ffi_prep_cif_var` only supports 64-bit floats (f64/double) and integers of at least `int`
+    /// size.
+    ArgType,
+    /// Returned from [`closure_alloc`] in case libffi was unable to allocate the closure.
+    UnableToAllocateClosure,
+    /// An unrecognized error code, potentially a bug.
+    Unknown(u32),
+}
+
+/// Helper function to convert return values from libffi to a `Result`.
+fn status_to_result<R>(status: ffi_status, good: R) -> Result<R, Error> {
+    match status {
+        raw::ffi_status_FFI_OK => Ok(good),
+        raw::ffi_status_FFI_BAD_TYPEDEF => Err(Error::Typedef),
+        raw::ffi_status_FFI_BAD_ABI => Err(Error::Abi),
+        raw::ffi_status_FFI_BAD_ARGTYPE => Err(Error::ArgType),
+        _ => Err(Error::Unknown(status)),
+    }
+}
+
+/// A wrapper for function pointers.
 ///
-/// We need to initialize a CIF before we can use it to call a function or create a closure. This
-/// function lets us specify the calling convention to use and the argument and result types. For
-/// varargs CIF initialization, see [`prep_cif_var`].
+/// This is used to make the API a bit easier to understand, and as a simple type lint. As a
+/// `repr(C)` struct of one element, it should be safe to transmute between `CodePtr` and
+/// `NonNull<c_void>` / `*mut c_void`, or between collections thereof.
 ///
+/// # Example
+///
+/// To create a `CodePtr` for a function, cast the function pointer using `as *mut _`:
+///
+/// ```
+/// use std::ffi::c_void;
+///
+/// use libffi::low::CodePtr;
+///
+/// unsafe extern "C" {
+///     unsafe fn qsort(
+///         ptr: *mut c_void,
+///         count: usize,
+///         size: usize,
+///         cmp_fn: extern "C" fn(cmp_a: *const c_void, cmp_b: *const c_void) -> i32,
+///     );
+/// }
+///
+/// let qsort_ptr = CodePtr(qsort as *mut _);
+/// // `qsort_ptr` now contains a `CodePtr` to the `qsort` libc function.
+/// ```
+#[derive(Clone, Copy, Debug, Hash)]
+#[repr(C)]
+pub struct CodePtr(pub *mut c_void);
+
+impl CodePtr {
+    /// Initializes a code pointer from a function pointer.
+    ///
+    /// This is useful mainly for talking to C APIs that take untyped callbacks specified in the API
+    /// as having type `void(*)()`.
+    pub fn from_fun(fun: unsafe extern "C" fn()) -> Self {
+        CodePtr(fun as *mut _)
+    }
+
+    /// Initializes a code pointer from a void, non-null pointer.
+    ///
+    /// This is the other common type used in APIs (or at least in libffi) for untyped callback
+    /// arguments.
+    pub fn from_ptr(fun: *mut c_void) -> Self {
+        CodePtr(fun)
+    }
+
+    /// Gets the code pointer as a `const void *`.
+    pub fn as_ptr(self) -> *const c_void {
+        self.0
+    }
+
+    /// Gets the code pointer as a `void *`.
+    pub fn as_mut_ptr(self) -> *mut c_void {
+        self.0
+    }
+
+    /// Gets a function pointer to self.0 as a `Option<extern "C" fn()>`.
+    ///
+    /// If you use `as_fun` to call function you **must** make sure that it is a `extern "C"`
+    /// function that does not accept any parameters and does not return a value.
+    fn as_option_void_fn(&self) -> Option<unsafe extern "C" fn()> {
+        // SAFETY:
+        // * `*mut c_void` and `Option<unsafe extern "C" fn()>` have the same size.
+        // * A NULL pointer will be transmuted to `None`.
+        unsafe { transmute::<*mut c_void, Option<unsafe extern "C" fn()>>(self.0) }
+    }
+}
+
+/// Initializes a CIF (Call Interface) with the given ABI and type signature.
+///
+/// Before a CIF can be used to call a function or create a closure, it must be initialized. This
+/// function accepts the calling convention to use and the argument and result types, and uses these
+/// values to initialize the CIF. For vararg CIF initialization, see [`prep_cif_var`].
 ///
 /// # Safety
 ///
-/// The CIF `cif` retains references to `rtype` and `atypes`, so if they are no longer live when the
-/// CIF is used then the behavior is undefined.
+/// * `cif` must be a pointer to a mutable and properly aligned [`ffi_cif`].
+/// * `rtype` must be a pointer to a properly aligned [`ffi_type`]. This pointer must be valid for
+///   the entire lifetime of `cif`.
+/// * `atypes` must be a pointer to a properly aligned array of [`ffi_type`]. The array must contain
+///   at least `nargs` `ffi_type`s. This array must be valid for the entire lifetime of `cif`.
 ///
 /// # Arguments
 ///
-/// - `cif` — the CIF to initialize
-/// - `abi` — the calling convention to use
-/// - `nargs` — the number of arguments
-/// - `rtype` — the result type
-/// - `atypes` — the argument types (length must be at least `nargs`)
+/// - `cif` — Pointer to the CIF to initialize
+/// - `abi` — The calling convention to use
+/// - `nargs` — The number of arguments
+/// - `rtype` — Pointer to the result type
+/// - `atypes` — Pointer to array of the argument types (the array must be at least `nargs` long)
 ///
 /// # Result
 ///
@@ -269,23 +254,33 @@ pub mod type_tag {
 /// # Errors
 ///
 /// This function returns an error if the underlying `ffi_prep_cif` returns an error. The following
-/// error conditions are listed in `libffi`'s man pages:
+/// error conditions are listed in libffi's man pages:
 ///
 /// * `cif` is `NULL`
 /// * `rtype` or `atypes` are malformed
 ///   * This should not happen when passing types in [`types`].
 /// * An invalid ABI is passed
 ///
-/// # Examples
+/// # Example
+///
+/// The following code creates a CIF that can be used to call a `extern "C"` function that accepts
+/// one `i32` and one `u64` argument and returns a pointer.
 ///
 /// ```
 /// use libffi::low::{ffi_abi_FFI_DEFAULT_ABI, ffi_cif, ffi_type, prep_cif, types};
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
+/// extern "C" fn ffi_function(a: i32, b: u64) -> *const i32 {
+///     // ...
+/// # std::ptr::null() // Just to make the function compile
+/// }
+///
 /// let mut args = [&raw mut types::sint32, &raw mut types::uint64];
 /// let mut cif = ffi_cif::default();
 ///
+/// // SAFETY:
+/// // * `cif` is a mutable `ffi_cif` that is properly aligned.
+/// // * The return type is pointer to a valid `ffi_type`.
+/// // * The argument array contains 2 pointers to valid `ffi_type`s.
 /// unsafe {
 ///     prep_cif(
 ///         &mut cif,
@@ -295,8 +290,9 @@ pub mod type_tag {
 ///         args.as_mut_ptr(),
 ///     )?;
 /// }
-/// #   Ok(())
-/// # }
+///
+/// // `cif` can now be used to call `ffi_function`.
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub unsafe fn prep_cif(
     cif: *mut ffi_cif,
@@ -305,31 +301,38 @@ pub unsafe fn prep_cif(
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
 ) -> Result<(), Error> {
-    // SAFETY: It is up to the caller to make sure that `cif`, `rtype`, and `atypes` are valid
-    // pointers and that `atypes` points to an array of (at least) `nargs` size.
+    // SAFETY:
+    // The caller must ensure that the safety requirements of this function are upheld.
     let status = unsafe { raw::ffi_prep_cif(cif, abi, nargs, rtype, atypes) };
     status_to_result(status, ())
 }
 
-/// Initalizes a CIF (Call Interface) for a varargs function.
+/// Initializes a CIF (Call Interface) for a vararg function with the given ABI and type signature.
 ///
-/// We need to initialize a CIF before we can use it to call a function or create a closure. This
-/// function lets us specify the calling convention to use and the argument and result types. For
-/// non-varargs CIF initialization, see [`prep_cif`].
+/// To call a vararg function with a different number or type of arguments, prepare a new CIF for
+/// each variation.
+///
+/// Before a CIF can be used to call a function it must be initialized. This function accepts the
+/// calling convention to use and the argument and result types, and uses these values to initialize
+/// the CIF. For non-vararg CIF initialization, see [`prep_cif`].
 ///
 /// # Safety
 ///
-/// The CIF `cif` retains references to `rtype` and `atypes`, so if they are no longer live when the
-/// CIF is used then the behavior is undefined.
+/// * `cif` must be a pointer to a mutable and properly aligned [`ffi_cif`].
+/// * `rtype` must be a pointer to a properly aligned [`ffi_type`]. This pointer must be valid for
+///   the entire lifetime of `cif`.
+/// * `atypes` must be a pointer to a properly aligned array of [`ffi_type`]. The array must contain
+///   at least `ntotalargs` `ffi_type`s. This array must be valid for the entire lifetime of `cif`.
 ///
 /// # Arguments
 ///
-/// - `cif` — the CIF to initialize
-/// - `abi` — the calling convention to use
+/// - `cif` — Pointer to the CIF to initialize
+/// - `abi` — The calling convention to use
 /// - `nfixedargs` — the number of fixed arguments
 /// - `ntotalargs` — the total number of arguments, including fixed and var args
-/// - `rtype` — the result type
-/// - `atypes` — the argument types (length must be at least `nargs`)
+/// - `rtype` — Pointer to the result type
+/// - `atypes` — Pointer to array of the argument types (the array must be at least `ntotalargs`
+///   long)
 ///
 /// # Result
 ///
@@ -337,13 +340,55 @@ pub unsafe fn prep_cif(
 ///
 /// # Errors
 ///
-/// This function returns an error if the underlying `ffi_prep_cif` returns an error. The following
-/// error conditions are listed in `libffi`'s man pages:
+/// This function returns an error if the underlying `ffi_prep_cif_var` returns an error. The
+/// following error conditions are listed in libffi's man pages:
 ///
 /// * `cif` is `NULL`
 /// * `rtype` or `atypes` are malformed
 ///   * This should not happen when passing types in [`types`].
 /// * An invalid ABI is passed
+/// * Integers smaller than 32 bits or floats smaller than 64 bits are passed as "variable" (not
+///   fixed) arguments.
+///
+/// # Example
+///
+/// The following code creates a CIF that can be used to call `printf` to print a pointer, an 32-bit
+/// signed integer and a 64-bit floating point number.
+///
+/// ```
+/// use libffi::low::{ffi_abi_FFI_DEFAULT_ABI, ffi_cif, ffi_type, prep_cif_var, types};
+///
+/// let mut args = [
+///     // The format string
+///     &raw mut types::pointer,
+///     // A pointer
+///     &raw mut types::pointer,
+///     // A signed 32-bit integer
+///     &raw mut types::sint32,
+///     // A 64-bit float
+///     &raw mut types::double,
+/// ];
+/// let mut printf_cif = ffi_cif::default();
+///
+/// // SAFETY:
+/// // * `cif` is a mutable `ffi_cif` that is properly aligned.
+/// // * The return type is pointer to a valid `ffi_type`.
+/// // * The argument array contains 4 pointers to valid `ffi_type`s.
+/// unsafe {
+///     prep_cif_var(
+///         &mut printf_cif,
+///         ffi_abi_FFI_DEFAULT_ABI,
+///         1,
+///         4,
+///         &raw mut types::sint32,
+///         args.as_mut_ptr(),
+///     )?;
+/// }
+///
+/// // `printf_cif` can now be used to call `printf` with a format string such as:
+/// // `c"Pointer: %p, number: %d, double: %f\n"`
+/// # Ok::<(), libffi::low::Error>(())
+/// ```
 pub unsafe fn prep_cif_var(
     cif: *mut ffi_cif,
     abi: ffi_abi,
@@ -352,8 +397,9 @@ pub unsafe fn prep_cif_var(
     rtype: *mut ffi_type,
     atypes: *mut *mut ffi_type,
 ) -> Result<(), Error> {
-    // SAFETY: It is up to the caller to make sure that `cif`, `rtype`, and `atypes` are valid
-    // pointers and that `atypes` points to an array of (at least) `nargs` size.
+    // SAFETY:
+    // The caller must ensure that `cif`, `rtype`, and `atypes` are valid pointers and that `atypes`
+    // points to an array of (at least) `nargs` size.
     let status = unsafe {
         raw::ffi_prep_cif_var(
             cif,
@@ -367,19 +413,35 @@ pub unsafe fn prep_cif_var(
     status_to_result(status, ())
 }
 
-/// Calls a C function as specified by a CIF.
+/// Calls a C function specified by a CIF.
+///
+/// While libffi's `ffi_call` requires return values to be at least the size of a CPU register, this
+/// function does not have those restrictions and can be used with return types of any size.
+///
+/// # Safety
+///
+/// * `cif` must be a pointer to an initialized and aligned `ffi_cif`.
+/// * The argument array and return type must be readable when calling `ffi_call`.
+/// * `fun` must be a function pointer to a function with a signature identical to the one provided
+///   when initializing `cif`.
+/// * It must be safe to call the function pointed to by `fun`.
+/// * `args` must point to an array of pointers to arguments that have identical layout to the
+///   arguments specified by `cif`.
+/// * The return type defined in `cif` must match the layout of `R`.
+///
+/// Thorough testing is strongly recommended when working with FFI functions.
 ///
 /// # Arguments
 ///
-/// * `cif` — describes the argument and result types and the calling convention
-/// * `fun` — the function to call
-/// * `args` — the arguments to pass to `fun`
+/// * `cif` — Pointer to the initialized CIF that describes `fun`'s signature and ABI
+/// * `fun` — Pointer to the function to call
+/// * `args` — Pointer to array of pointers to arguments to pass to `fun`
 ///
 /// # Result
 ///
 /// The result of calling `fun` with `args`.
 ///
-/// # Examples
+/// # Example
 ///
 /// ```
 /// use std::ffi::c_void;
@@ -387,48 +449,46 @@ pub unsafe fn prep_cif_var(
 ///
 /// use libffi::low::{CodePtr, call, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif, types};
 ///
-/// extern "C" fn c_function(a: u64, b: u64) -> u64 {
+/// extern "C" fn add_function(a: u64, b: u64) -> u64 {
 ///     a + b
 /// }
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
-/// let result = unsafe {
-///     let mut args = [&raw mut types::uint64, &raw mut types::uint64];
-///     let mut cif = ffi_cif::default();
+/// let mut arg_types = [&raw mut types::uint64, &raw mut types::uint64];
+/// let mut cif = ffi_cif::default();
 ///
+/// // SAFETY:
+/// // * `cif` is a pointer to a mutable `ffi_cif` that is properly aligned.
+/// // * The return type is pointer to a valid `ffi_type`.
+/// // * The argument array contains 2 pointers to valid `ffi_type`s.
+/// unsafe {
 ///     prep_cif(
 ///         &raw mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
 ///         2,
 ///         &raw mut types::uint64,
-///         args.as_mut_ptr(),
+///         arg_types.as_mut_ptr(),
 ///     )?;
+/// }
 ///
-///     call::<u64>(
-///         &mut cif,
-///         CodePtr(c_function as *mut _),
-///         vec![
-///             ptr::from_mut(&mut 4u64).cast(),
-///             ptr::from_mut(&mut 5u64).cast(),
-///         ]
-///         .as_mut_ptr(),
-///     )
-/// };
+/// let mut arg_a: u64 = 4;
+/// let mut arg_b: u64 = 5;
+/// let mut args = [
+///     (&raw mut arg_a).cast::<c_void>(),
+///     (&raw mut arg_b).cast::<c_void>(),
+/// ];
+///
+/// // SAFETY:
+/// // * `cif` is a pointer to an initialized `ffi_cif` to a function with the "C" ABI.
+/// // * `arg_types` is still readable.
+/// // * `add_function` points to an `extern "C"` function that accepts two `u64`s and returns a
+/// //   `u64`.
+/// // * `add_function` does not perform any unsafe actions.
+/// // * `args` is a pointer to an array of two pointers to `u64`s.
+/// let result: u64 = unsafe { call(&mut cif, CodePtr(add_function as *mut _), args.as_mut_ptr()) };
 ///
 /// assert_eq!(9, result);
-/// #   Ok(())
-/// # }
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
-///
-/// # Safety
-/// libffi will read values from `args` based on the CIF, make sure that every pointer points to
-/// correct data types that are properly aligned. Additionally, the ffi function may perform actions
-/// that causes undefined behavior. Extensive testing is recommended when dealing with ffi
-/// functions.
-///
-/// It is also important that the return type `R` matches the type of the value returned from `fun`
-/// as a mismatch may lead to out-of-bounds reads, write, and misaligned memory accesses.
 pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -> R {
     // libffi always writes *at least* a full register to the result pointer. Therefore, if the
     // return value is smaller, we need to handle the return value with extra care to prevent out of
@@ -446,7 +506,7 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
         unsafe {
             raw::ffi_call(
                 cif,
-                Some(*fun.as_safe_fun()),
+                fun.as_option_void_fn(),
                 result.as_mut_ptr().cast::<c_void>(),
                 args,
             );
@@ -466,7 +526,7 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
         unsafe {
             raw::ffi_call(
                 cif,
-                Some(*fun.as_safe_fun()),
+                fun.as_option_void_fn(),
                 result.as_mut_ptr().cast::<c_void>(),
                 args,
             );
@@ -479,16 +539,19 @@ pub unsafe fn call<R>(cif: *mut ffi_cif, fun: CodePtr, args: *mut *mut c_void) -
 /// Helper function to get the return value of a ffi call on big endian architectures.
 ///
 /// # Safety
+///
 /// `result` must be a pointer to a `usize` and `mem::size_of::<R> <= mem::size_of::<usize>()`.
 unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const usize) -> R {
     if type_tag == type_tag::FLOAT || type_tag == type_tag::STRUCT || type_tag == type_tag::VOID {
-        // SAFETY: Testing has shown that these types appear at `result`.
-        // For voids, this should be optimized to a NOP.
+        // SAFETY:
+        // Testing has shown that these types appear at `result`. For voids, this should be
+        // optimized to a NOP.
         unsafe { result.cast::<R>().read() }
     } else {
-        // SAFETY: Consider `*result` an array with `size_of::<usize>() / size_of::<R>()` items of
-        // `R`. The following code reads the last element to get the least significant bits of
-        // `result` on big endian architectures. The most significant bits are zeroed by libffi.
+        // SAFETY:
+        // Consider `*result` an array with `size_of::<usize>() / size_of::<R>()` items of `R`. The
+        // following code reads the last element to get the least significant bits of `result` on
+        // big endian architectures. The most significant bits are zeroed by libffi.
         unsafe {
             result
                 .cast::<R>()
@@ -500,86 +563,94 @@ unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const u
 
 /// Allocates a closure.
 ///
-/// Returns a pair of the writable closure object and the function pointer for calling it. The
-/// former acts as a handle to the closure, and is used to configure and free it. The latter is the
-/// code pointer used to invoke the closure. Before it can be invoked, it must be initialized with
-/// [`prep_closure`] and [`prep_closure_mut`]. The closure must be deallocated using
-/// [`closure_free`], after which point the code pointer should not be used.
+/// This function allocates a closure and returns a writable closure object and its corresponding
+/// function pointer. The former acts as a handle to the closure, and is used to configure and free
+/// the closure. The latter is the code pointer used to invoke the closure. Before it can be
+/// invoked, it must be initialized with [`prep_closure`] or [`prep_closure_mut`]. The closure must
+/// be freed using [`closure_free`], after which point the code pointer must not be used.
 ///
 /// # Errors
 ///
-/// This function returns an error if libffi was unable to allocate the closure.
+/// Returns an error if libffi fails to allocate the closure.
 ///
-/// # Examples
+/// # Example
 ///
 /// ```
 /// use libffi::low::{closure_alloc, closure_free};
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
 /// let (closure_handle, code_ptr) = closure_alloc()?;
 ///
-/// // Use closure_alloc here
+/// // Use `closure_handle` and `code_ptr` here.
 ///
 /// // Always be sure to call closure_free after use to free the closure's memory.
+///
+/// // SAFETY:
+/// // * `closure_handle` is a valid handle that has not been freed already.
+/// // * `code_ptr` is not used after this point.
 /// unsafe { closure_free(closure_handle) };
-/// #   Ok(())
-/// # }
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub fn closure_alloc() -> Result<(*mut ffi_closure, CodePtr), Error> {
-    // SAFETY: Call `ffi_closure_alloc` with sufficient size for a `ffi_closure`. This writes back
-    // a pointer to `code_pointer`, at which point it can be assumed to be initialized.
-    unsafe {
-        let mut code_pointer = MaybeUninit::<*mut c_void>::uninit();
-        let closure = raw::ffi_closure_alloc(size_of::<ffi_closure>(), code_pointer.as_mut_ptr());
+    let mut code_pointer = MaybeUninit::<*mut c_void>::uninit();
 
-        if closure.is_null() {
-            return Err(Error::UnableToAllocateClosure);
-        }
+    // SAFETY:
+    // Call `ffi_closure_alloc` with sufficient size for a `ffi_closure`. This writes a pointer
+    // to `code_pointer` if successful.
+    let closure =
+        unsafe { raw::ffi_closure_alloc(size_of::<ffi_closure>(), code_pointer.as_mut_ptr()) };
 
-        Ok((
-            closure.cast(),
-            CodePtr::from_ptr(code_pointer.assume_init()),
-        ))
+    if closure.is_null() {
+        return Err(Error::UnableToAllocateClosure);
     }
+
+    // SAFETY:
+    // `ffi_closure_alloc` was called and has returned a non-null handle to a closure, indicating it
+    // was successful. This resulted in a function pointer being written to `code_pointer`.
+    let code_pointer = unsafe { code_pointer.assume_init() };
+
+    Ok((closure.cast(), CodePtr::from_ptr(code_pointer)))
 }
 
 /// Frees a closure.
 ///
 /// Closures allocated with [`closure_alloc`] must be deallocated with [`closure_free`].
 ///
-/// # Examples
+/// # Safety
+///
+/// * This should only be called on a `*mut ffi_closure` created by [`closure_alloc`] that has not
+///   been already freed.
+/// * `code_ptr` **must not** be used to call the closure after `closure_free` has been called to
+///   free the closure.
+///
+/// # Example
 ///
 /// ```
 /// use libffi::low::{closure_alloc, closure_free};
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
 /// let (closure_handle, code_ptr) = closure_alloc()?;
 ///
-/// // ...
+/// // Use `closure_handle` and `code_ptr` here.
 ///
+/// // SAFETY:
+/// // * `closure_handle` is a valid handle that has not been freed already.
+/// // * `code_ptr` is not used after this point.
 /// unsafe {
 ///     closure_free(closure_handle);
 /// }
-/// #   Ok(())
-/// # }
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
-///
-/// # Safety
-/// This will free the provided pointer, make sure that it is only called on pointers returned from
-/// [`closure_alloc`].
 pub unsafe fn closure_free(closure: *mut ffi_closure) {
     // SAFETY: `ffi_closure_free` must be called to free any memory allocated by
     // `ffi_closure_alloc`.
     unsafe { raw::ffi_closure_free(closure.cast::<c_void>()) }
 }
 
-/// The type of function called by a closure.
+/// The function signature of a callback handler used for calling immutable closures with libffi.
+/// Handler functions of this type will abort if a panic is thrown by the closure.
 ///
 /// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
 /// the type of the result. The parameters are not typed, since they are passed as a C array of
-/// `void*`.
+/// `void *`.
 pub type Callback<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
@@ -587,11 +658,12 @@ pub type Callback<U, R> = unsafe extern "C" fn(
     userdata: *const U,
 );
 
-/// The type of function called by a closure that can unwind panics.
+/// The function signature of a callback handler used for calling immutable closures with libffi.
+/// Handler functions of this type can be used to catch unwinding panics thrown by its closure.
 ///
 /// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
 /// the type of the result. The parameters are not typed, since they are passed as a C array of
-/// `void*`.
+/// `void *`.
 pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
@@ -599,11 +671,12 @@ pub type CallbackUnwindable<U, R> = unsafe extern "C-unwind" fn(
     userdata: *const U,
 );
 
-/// The type of function called by a mutable closure.
+/// The function signature of a callback handler used for calling mutable closures with libffi.
+/// Handler functions of this type will abort if a panic is thrown by the closure.
 ///
 /// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
 /// the type of the result. The parameters are not typed, since they are passed as a C array of
-/// `void*`.
+/// `void *`.
 pub type CallbackMut<U, R> = unsafe extern "C" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
@@ -611,11 +684,12 @@ pub type CallbackMut<U, R> = unsafe extern "C" fn(
     userdata: *mut U,
 );
 
-/// The type of function called by a mutable closure that can unwind panics.
+/// The function signature of a callback handler used for calling mutable closures with libffi.
+/// Handler functions of this type can be used to catch unwinding panics thrown by its closure.
 ///
 /// `U` is the type of the user data captured by the closure and passed to the callback, and `R` is
 /// the type of the result. The parameters are not typed, since they are passed as a C array of
-/// `void*`.
+/// `void *`.
 pub type CallbackUnwindableMut<U, R> = unsafe extern "C-unwind" fn(
     cif: &ffi_cif,
     result: *mut MaybeUninit<R>,
@@ -631,28 +705,27 @@ pub type RawCallback = unsafe extern "C" fn(
     userdata: *mut c_void,
 );
 
-/// Initializes a closure with a callback function and userdata.
+/// Initializes a closure with a callback function and user data.
 ///
 /// After allocating a closure with [`closure_alloc`], it needs to be initialized with a function
-/// `callback` to call and a pointer `userdata` to pass to it. Invoking the closure’s code pointer
+/// `callback` to call and a pointer `userdata` to pass to it. Invoking the closure's code pointer
 /// will then pass the provided arguments and the user data pointer to the callback.
 ///
-/// For mutable userdata use [`prep_closure_mut`].
+/// If mutable access to the user data is required, use [`prep_closure_mut`].
 ///
 /// # Safety
 ///
-/// The closure retains a reference to CIF `cif`, so that must still be live when the closure is
-/// used lest undefined behavior result.
+/// * `closure` and `code` must point to values retrieved from the same call to [`closure_alloc`].
+/// * `cif` and `userdata` must point to memory that live for at least as long as `closure`.
 ///
 /// # Arguments
 ///
-/// - `closure` — the closure to initialize
-/// - `cif` — the calling convention and types for calling the closure
-/// - `callback` — the function that the closure will invoke
-/// - `userdata` — the closed-over value, stored in the closure and passed to the callback upon
-///   invocation
-/// - `code` — the closure’s code pointer, *i.e.*, the second component returned by
-///   [`closure_alloc`].
+/// - `closure` - Pointer to the closure to initialize
+/// - `cif` - Pointer the CIF describing the calling convention and types for calling the closure
+/// - `callback` - Pointer to the function that will be called when the closure is invoked
+/// - `userdata` - Pointer to the closed-over value, stored in the closure and passed to the
+///   callback upon invocation
+/// - `code` - the closure's code pointer, the second component returned by [`closure_alloc`].
 ///
 /// # Result
 ///
@@ -660,13 +733,13 @@ pub type RawCallback = unsafe extern "C" fn(
 ///
 /// # Errors
 ///
-/// This function will return an error if the `cif`'s ABI is invalid.
+/// This function will return an error if `cif` is NULL, malformed, or contains an invalid ABI.
 ///
-/// # Examples
+/// # Example
 ///
 /// ```
+/// use std::ffi::c_void;
 /// use std::mem;
-/// use std::os::raw::c_void;
 ///
 /// use libffi::low::{
 ///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
@@ -679,23 +752,24 @@ pub type RawCallback = unsafe extern "C" fn(
 ///     args: *const *const c_void,
 ///     userdata: *const u64,
 /// ) {
+///     // SAFETY:
+///     // This function accepts a single `u64`, which it adds with its userdata and writes to the
+///     // result pointer.
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
 ///         (*result).write(**args + *userdata);
 ///     }
 /// }
 ///
-/// fn twice(f: extern "C" fn(u64) -> u64, x: u64) -> u64 {
-///     f(f(x))
-/// }
+/// let mut cif = ffi_cif::default();
+/// let mut args = [(&raw mut types::uint64).cast()];
+/// let mut userdata: u64 = 5;
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
+/// // SAFETY:
+/// // * `cif` points to a mutable `ffi_cif`.
+/// // * `rtype` points to a `ffi_type`.
+/// // * `atypes` points to an array of `ffi_types` with one element.
 /// unsafe {
-///     let mut cif = ffi_cif::default();
-///     let mut args = [(&raw mut types::uint64).cast()];
-///     let mut userdata: u64 = 5;
-///
 ///     prep_cif(
 ///         &mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
@@ -703,29 +777,33 @@ pub type RawCallback = unsafe extern "C" fn(
 ///         &raw mut types::uint64,
 ///         args.as_mut_ptr(),
 ///     )?;
-///
-///     let (closure, code) = closure_alloc()?;
-///
-///     let add5: extern "C" fn(u64) -> u64 = mem::transmute(code);
-///
-///     prep_closure(
-///         closure,
-///         &mut cif,
-///         callback,
-///         &raw mut userdata,
-///         CodePtr(add5 as *mut _),
-///     )?;
-///
-///     assert_eq!(11, add5(6));
-///     assert_eq!(12, add5(7));
-///
-///     assert_eq!(22, twice(add5, 12));
-///
-///     // Make sure to free the closure after we are finished with it.
-///     unsafe { closure_free(closure) };
 /// }
-/// #   Ok(())
-/// # }
+///
+/// let (closure, code) = closure_alloc()?;
+///
+/// // SAFETY:
+/// // * `closure` and `code` point to memory from the same call to `closure_alloc`.
+/// // * `closure_alloc` returned successfully as we have not returned early yet.
+/// // * `cif` and `userdata` point to memory that live until the end of this function, at which
+/// //   point `closure` will have been freed.
+/// unsafe {
+///     prep_closure(closure, &mut cif, callback, &raw mut userdata, code)?;
+/// }
+///
+/// // SAFETY:
+/// // * `cif` and `callback` both describe a function that accepts one `u64` and returns a `u64`.
+/// // * `code` contains a function pointer that will be used to execute `callback`.
+/// let add5: extern "C" fn(u64) -> u64 = unsafe { mem::transmute(code) };
+///
+/// assert_eq!(11, add5(6));
+/// assert_eq!(12, add5(7));
+///
+/// // Make sure to free the closure after we are finished with it.
+/// // SAFETY:
+/// // * `closure` is a valid `ffi_closure` that has not been freed yet.
+/// // * `code` / `add5` is not called beyond this point.
+/// unsafe { closure_free(closure) };
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub unsafe fn prep_closure<U, R>(
     closure: *mut ffi_closure,
@@ -734,7 +812,8 @@ pub unsafe fn prep_closure<U, R>(
     userdata: *const U,
     code: CodePtr,
 ) -> Result<(), Error> {
-    // SAFETY: Up to the caller, see this function's safety section.
+    // SAFETY:
+    // The caller must ensure that this function's safety requirements are met.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
             closure,
@@ -748,8 +827,9 @@ pub unsafe fn prep_closure<U, R>(
     status_to_result(status, ())
 }
 
-/// Identical to [`prep_closure`] except that panics in the closure may unwind. See [`prep_closure`]
-/// for details about calling this function and its arguments.
+/// Similar to [`prep_closure`], but allows panics in the closure to unwind.
+///
+/// See [`prep_closure`] for details about calling this function and its arguments.
 ///
 /// # Safety
 ///
@@ -761,14 +841,14 @@ pub unsafe fn prep_closure<U, R>(
 ///
 /// # Errors
 ///
-/// This function will return an error if the `cif`'s ABI is invalid.
+/// This function will return an error if `cif` is NULL, malformed, or contains an invalid ABI.
 ///
 /// # Example
 ///
 /// Allocating a closure that will panic and catching it with [`std::panic::catch_unwind`].
 ///
 /// ```
-/// use std::os::raw::c_void;
+/// use std::ffi::c_void;
 /// use std::{mem, panic, ptr};
 ///
 /// use libffi::low::{
@@ -785,11 +865,13 @@ pub unsafe fn prep_closure<U, R>(
 ///     panic!("Panic from a libffi closure");
 /// }
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
-/// unsafe {
-///     let mut cif = ffi_cif::default();
+/// let mut cif = ffi_cif::default();
 ///
+/// /// // SAFETY:
+/// // * `cif` points to a mutable `ffi_cif`.
+/// // * `rtype` points to a `ffi_type`.
+/// // * `nargs` is 0, so it is safe for `atypes` to be `NULL`.
+/// unsafe {
 ///     prep_cif(
 ///         &raw mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
@@ -797,25 +879,38 @@ pub unsafe fn prep_closure<U, R>(
 ///         &raw mut types::void,
 ///         ptr::null_mut(),
 ///     )?;
-///
-///     let (closure, code) = closure_alloc()?;
-///
-///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
-///
-///     prep_closure_unwindable(closure, &raw mut cif, callback, &(), code)?;
-///
-///     let catch_result = panic::catch_unwind(move || {
-///         this_panics();
-///         println!("This should not print as `this_panics` paniced.");
-///     });
-///
-///     // If a panic is "caught", `catch_unwind` returns an `Err`.
-///     assert!(catch_result.is_err());
-///     // Make sure to free the closure after we are finished with it.
-///     unsafe { closure_free(closure) };
 /// }
-/// #   Ok(())
-/// # }
+///
+/// let (closure, code) = closure_alloc()?;
+///
+/// // SAFETY:
+/// // * `closure` and `code` point to memory from the same call to `closure_alloc`.
+/// // * `closure_alloc` returned successfully as we have not returned early yet.
+/// // * `cif` points to memory that live until the end of this function, at which point `closure`
+/// //   will have been freed.
+/// // * `userdata` is not used.
+/// unsafe {
+///     prep_closure_unwindable(closure, &raw mut cif, callback, &(), code)?;
+/// }
+///
+/// // SAFETY:
+/// // * `cif` and `callback` both describe a function that does not accept any argument and does
+/// //   not return anything.
+/// // * `code` contains a function pointer that will be used to execute `callback`.
+/// let this_panics: extern "C-unwind" fn() = unsafe { mem::transmute(code) };
+///
+/// let catch_result = panic::catch_unwind(move || {
+///     this_panics();
+///     println!("This should not print as `this_panics` paniced.");
+/// });
+///
+/// // If a panic is "caught", `catch_unwind` returns an `Err`.
+/// assert!(catch_result.is_err());
+/// // Make sure to free the closure after we are finished with it.
+/// // * `closure` is a valid `ffi_closure` that has not been freed yet.
+/// // * `code` / `this_panics` is not called beyond this point.
+/// unsafe { closure_free(closure) };
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub unsafe fn prep_closure_unwindable<U, R>(
     closure: *mut ffi_closure,
@@ -824,7 +919,8 @@ pub unsafe fn prep_closure_unwindable<U, R>(
     userdata: *const U,
     code: CodePtr,
 ) -> Result<(), Error> {
-    // SAFETY: Up to the caller, see this function's safety section.
+    // SAFETY:
+    // The caller must ensure that this function's safety requirements are met.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
             closure,
@@ -838,28 +934,33 @@ pub unsafe fn prep_closure_unwindable<U, R>(
     status_to_result(status, ())
 }
 
-/// Initializes a mutable closure with a callback function and (mutable) userdata.
+/// Initializes a mutable closure with a callback function and mutable user data.
+///
+/// While it is possible to use mutable closures, they are typically unsafe as they allow multiple
+/// closures mutable access to the same memory location at the same time. If possible, it is
+/// recommended to use immutable closures with something that allows interior mutability, such as
+/// a `Mutex` instead.
 ///
 /// After allocating a closure with [`closure_alloc`], it needs to be initialized with a function
-/// `callback` to call and a pointer `userdata` to pass to it. Invoking the closure’s code pointer
+/// `callback` to call and a pointer `userdata` to pass to it. Invoking the closure's code pointer
 /// will then pass the provided arguments and the user data pointer to the callback.
 ///
-/// For immutable userdata use [`prep_closure`].
+/// For immutable user data use [`prep_closure`].
 ///
 /// # Safety
 ///
-/// The closure retains a reference to CIF `cif`, so that must still be live when the closure is
-/// used lest undefined behavior result.
+/// * `closure` and `code` must point to values retrieved from the same call to [`closure_alloc`].
+/// * `cif` and `userdata` must point to memory that live for at least as long as `closure`.
+/// * `callback` must ensure that it is safe to mutate `userdata`.
 ///
 /// # Arguments
 ///
-/// - `closure` — the closure to initialize
-/// - `cif` — the calling convention and types for calling the closure
-/// - `callback` — the function that the closure will invoke
-/// - `userdata` — the closed-over value, stored in the closure and passed to the callback upon
-///   invocation
-/// - `code` — the closure’s code pointer, *i.e.*, the second component returned by
-///   [`closure_alloc`].
+/// - `closure` - Pointer to the closure to initialize
+/// - `cif` - Pointer the CIF describing the calling convention and types for calling the closure
+/// - `callback` - Pointer to the function that will be called when the closure is invoked
+/// - `userdata` - Pointer to the closed-over value, stored in the closure and passed to the
+///   callback upon invocation
+/// - `code` - the closure's code pointer, the second component returned by [`closure_alloc`].
 ///
 /// # Result
 ///
@@ -867,13 +968,13 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///
 /// # Errors
 ///
-/// This function will return an error if the `cif`'s ABI is invalid.
+/// This function will return an error if `cif` is NULL, malformed, or contains an invalid ABI.
 ///
-/// # Examples
+/// # Example
 ///
 /// ```
+/// use std::ffi::c_void;
 /// use std::mem;
-/// use std::os::raw::c_void;
 ///
 /// use libffi::low::{
 ///     CodePtr, closure_alloc, closure_free, ffi_abi_FFI_DEFAULT_ABI, ffi_cif, prep_cif,
@@ -886,6 +987,11 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///     args: *const *const c_void,
 ///     userdata: *mut u64,
 /// ) {
+///     // SAFETY:
+///     // * This function accepts a single `u64`, which it adds with its user data and writes to
+///     //   the result pointer.
+///     // * In this code example it is "safe" to mutate `userdata`, but this is generally hard to
+///     //   prove in real-world cases, so immutable closures are preferred.
 ///     unsafe {
 ///         let args: *const *const u64 = args.cast();
 ///         (*result).write(*userdata);
@@ -893,17 +999,15 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///     }
 /// }
 ///
-/// fn twice(f: extern "C" fn(u64) -> u64, x: u64) -> u64 {
-///     f(f(x))
-/// }
+/// let mut cif = ffi_cif::default();
+/// let mut args = [(&raw mut types::uint64).cast()];
+/// let mut userdata: u64 = 5;
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
+/// // SAFETY:
+/// // * `cif` points to a mutable `ffi_cif`.
+/// // * `rtype` points to a `ffi_type`.
+/// // * `atypes` points to an array of `ffi_types` with one element.
 /// unsafe {
-///     let mut cif = ffi_cif::default();
-///     let mut args = [(&raw mut types::uint64).cast()];
-///     let mut userdata: u64 = 5;
-///
 ///     prep_cif(
 ///         &mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
@@ -911,29 +1015,34 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 ///         &raw mut types::uint64,
 ///         args.as_mut_ptr(),
 ///     )?;
-///
-///     let (closure, code) = closure_alloc()?;
-///
-///     let add5: extern "C" fn(u64) -> u64 = mem::transmute(code);
-///
-///     prep_closure_mut(
-///         closure,
-///         &mut cif,
-///         callback,
-///         &raw mut userdata,
-///         CodePtr(add5 as *mut _),
-///     )?;
-///
-///     assert_eq!(5, add5(6));
-///     assert_eq!(11, add5(7));
-///
-///     assert_eq!(19, twice(add5, 1));
-///
-///     // Make sure to free the closure after we are finished with it.
-///     unsafe { closure_free(closure) };
 /// }
-/// #   Ok(())
-/// # }
+///
+/// let (closure, code) = closure_alloc()?;
+///
+/// // SAFETY:
+/// // * `closure` and `code` point to memory from the same call to `closure_alloc`.
+/// // * `closure_alloc` returned successfully as we have not returned early yet.
+/// // * `cif` and `userdata` point to memory that live until the end of this function, at which
+/// //   point `closure` will have been freed.
+/// unsafe {
+///     prep_closure_mut(closure, &mut cif, callback, &raw mut userdata, code)?;
+/// }
+///
+/// // SAFETY:
+/// // * `cif` and `callback` both describe a function that accepts one `u64` and returns a `u64`.
+/// // * `code` contains a function pointer that will be used to execute `callback`.
+/// let add5: extern "C" fn(u64) -> u64 = unsafe { mem::transmute(code) };
+///
+/// assert_eq!(5, add5(6));
+/// assert_eq!(11, add5(7));
+/// assert_eq!(userdata, 5 + 6 + 7);
+///
+/// // Make sure to free the closure after we are finished with it.
+/// // SAFETY:
+/// // * `closure` is a valid `ffi_closure` that has not been freed yet.
+/// // * `code` / `add5` is not called beyond this point.
+/// unsafe { closure_free(closure) };
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub unsafe fn prep_closure_mut<U, R>(
     closure: *mut ffi_closure,
@@ -942,7 +1051,8 @@ pub unsafe fn prep_closure_mut<U, R>(
     userdata: *mut U,
     code: CodePtr,
 ) -> Result<(), Error> {
-    // SAFETY: Up to the caller, see this function's safety section.
+    // SAFETY:
+    // The caller must ensure that this function's safety requirements are met.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
             closure,
@@ -956,8 +1066,9 @@ pub unsafe fn prep_closure_mut<U, R>(
     status_to_result(status, ())
 }
 
-/// Identical to [`prep_closure_mut`] except that panics in the closure may unwind. See
-/// [`prep_closure_mut`] for details about calling this function and its arguments.
+/// Similar to [`prep_closure_mut`], but allows panics in the closure to unwind.
+///
+/// See [`prep_closure_mut`] for details about calling this function and its arguments.
 ///
 /// # Safety
 ///
@@ -969,14 +1080,14 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///
 /// # Errors
 ///
-/// This function will return an error if the `cif`'s ABI is invalid.
+/// This function will return an error if `cif` is NULL, malformed, or contains an invalid ABI.
 ///
 /// # Example
 ///
 /// Allocating a closure that will panic and catching it with [`std::panic::catch_unwind`].
 ///
 /// ```
-/// use std::os::raw::c_void;
+/// use std::ffi::c_void;
 /// use std::{mem, panic, ptr};
 ///
 /// use libffi::low::{
@@ -990,6 +1101,9 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///     args: *const *const c_void,
 ///     userdata: *mut u64,
 /// ) {
+///     // * This function does not accept any parameters and does not return a result.
+///     // * In this code example it is "safe" to mutate `userdata`, but this is generally hard to
+///     //   prove in real-world cases, so immutable closures are preferred.
 ///     unsafe {
 ///         *userdata += 1;
 ///         panic!("Panic from a libffi closure");
@@ -997,11 +1111,14 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///     }
 /// }
 ///
-/// # use libffi::low::Error;
-/// # fn main() -> Result<(), Error> {
-/// unsafe {
-///     let mut cif = ffi_cif::default();
+/// let mut cif = ffi_cif::default();
+/// let mut userdata: u64 = 0;
 ///
+/// /// // SAFETY:
+/// // * `cif` points to a mutable `ffi_cif`.
+/// // * `rtype` points to a `ffi_type`.
+/// // * `nargs` is 0, so it is safe to set `atypes` to `NULL`.
+/// unsafe {
 ///     prep_cif(
 ///         &raw mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
@@ -1009,27 +1126,37 @@ pub unsafe fn prep_closure_mut<U, R>(
 ///         &raw mut types::void,
 ///         ptr::null_mut(),
 ///     )?;
-///
-///     let (closure, code) = closure_alloc()?;
-///
-///     let this_panics: extern "C-unwind" fn() = mem::transmute(code);
-///     let mut userdata: u64 = 0;
-///
-///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &mut userdata, code)?;
-///
-///     let catch_result = panic::catch_unwind(move || {
-///         this_panics();
-///     });
-///
-///     // If a panic is "caught", `catch_unwind` returns an `Err`.
-///     assert!(catch_result.is_err());
-///     // Userdata was incremented once before `this_panics` panicked.
-///     assert_eq!(userdata, 1);
-///     // Make sure to free the closure after we are finished with it.
-///     unsafe { closure_free(closure) };
 /// }
-/// #   Ok(())
-/// # }
+/// let (closure, code) = closure_alloc()?;
+////// // SAFETY:
+/// // * `closure` and `code` point to memory from the same call to `closure_alloc`.
+/// // * `closure_alloc` returned successfully as we have not returned early yet.
+/// // * `cif` and `userdata` point to memory that live until the end of this function, at which
+/// //   point `closure` will have been freed.
+/// unsafe {
+///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &mut userdata, code)?;
+/// }
+///
+/// /// // SAFETY:
+/// // * `cif` and `callback` both describe a function that does not accept any arguments and does
+/// //   not return any value.
+/// // * `code` contains a function pointer that will be used to execute `callback`.
+/// let this_panics: extern "C-unwind" fn() = unsafe { mem::transmute(code) };
+///
+/// let catch_result = panic::catch_unwind(move || {
+///     this_panics();
+/// });
+///
+/// // If a panic is "caught", `catch_unwind` returns an `Err`.
+/// assert!(catch_result.is_err());
+/// // `userdata` was incremented once before `this_panics` panicked.
+/// assert_eq!(userdata, 1);
+/// // Make sure to free the closure after we are finished with it.
+/// // SAFETY:
+/// // * `closure` is a valid `ffi_closure` that has not been freed yet.
+/// // * `code` / `this_panics` is not called beyond this point.
+/// unsafe { closure_free(closure) };
+/// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub unsafe fn prep_closure_unwindable_mut<U, R>(
     closure: *mut ffi_closure,
@@ -1038,7 +1165,8 @@ pub unsafe fn prep_closure_unwindable_mut<U, R>(
     userdata: *mut U,
     code: CodePtr,
 ) -> Result<(), Error> {
-    // SAFETY: Up to the caller, see this function's safety section.
+    // SAFETY:
+    // The caller must ensure that this function's safety requirements are met.
     let status = unsafe {
         raw::ffi_prep_closure_loc(
             closure,
@@ -1071,7 +1199,10 @@ mod test {
         };
         let mut cif = ffi_cif::default();
 
-        // SAFETY: Both `bad_arg` and `cif` are pointers to valid data.
+        // SAFETY:
+        // * `cif` points to a mutable `ffi_cif`.
+        // * `rtype` points to a `ffi_type`.
+        // * Since `nargs` is 0, it is safe to set `atypes` to `NULL`.
         let result = unsafe {
             prep_cif(
                 &raw mut cif,
@@ -1087,7 +1218,10 @@ mod test {
         // Provoke a FFI_BAD_ABI by a bad ABI value
         let mut cif = ffi_cif::default();
 
-        // SAFETY: `cif` is a pointer to valid data.
+        // SAFETY:
+        // * `cif` points to a mutable `ffi_cif`.
+        // * `rtype` points to a `ffi_type`.
+        // * Since `nargs` is 0, it is safe to set `atypes` to `NULL`.
         let result = unsafe {
             prep_cif(
                 &raw mut cif,
@@ -1146,7 +1280,8 @@ mod test {
             &raw mut types::double,
         ];
 
-        // SAFETY: Both `cif` and `args` are pointers to valid data.
+        // SAFETY:
+        // `cif`, `rtype` and `atypes` points to valid, well-formed data.
         let result = unsafe {
             prep_cif_var(
                 &raw mut cif,
@@ -1252,7 +1387,7 @@ mod test {
             // SAFETY:
             // `cif` points to a properly aligned `ffi_cif`.
             // The return value is a pointer to an `ffi_type`.
-            // `nargs` is 0, so argument and argument type array are never read.
+            // `nargs` is 0, so argument and argument type array is never read.
             unsafe {
                 prep_cif(
                     &raw mut cif,

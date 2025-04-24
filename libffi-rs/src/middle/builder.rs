@@ -95,7 +95,7 @@ use super::types::Type;
 ///
 /// // SAFETY: `lambda_callback` takes two `u64`s and returns a `u64`.
 /// unsafe {
-///     let fun: &unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
+///     let fun: unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
 ///
 ///     assert_eq!(11, fun(5, 6));
 ///     assert_eq!(12, fun(5, 7));
@@ -164,7 +164,7 @@ impl Builder {
     ///
     /// # Errors
     ///
-    /// See [`Cif::new`] for possible error conditions.
+    /// See [`Cif::new`](`crate::middle::Cif::new`) for possible error conditions.
     pub fn into_cif(self) -> Result<super::Cif, Error> {
         super::Cif::new_with_abi(&self.args, self.res, self.abi)
     }
@@ -183,7 +183,7 @@ impl Builder {
     ///
     /// # Errors
     ///
-    /// See [`Cif::new`] for possible error conditions.
+    /// See [`Cif::new`](`crate::middle::Cif::new`) for possible error conditions.
     pub fn into_closure<U, R>(
         self,
         callback: super::Callback<U, R>,
@@ -206,7 +206,7 @@ impl Builder {
     ///
     /// # Errors
     ///
-    /// See [`Cif::new`] for possible error conditions.
+    /// See [`Cif::new`](`crate::middle::Cif::new`) for possible error conditions.
     pub fn into_closure_mut<U, R>(
         self,
         callback: super::CallbackMut<U, R>,
@@ -229,7 +229,7 @@ impl Builder {
     ///
     /// # Errors
     ///
-    /// See [`Cif::new`] for possible error conditions.
+    /// See [`Cif::new`](`crate::middle::Cif::new`) for possible error conditions.
     pub fn into_closure_owned<U: 'static, R>(
         self,
         callback: super::Callback<U, R>,
@@ -252,7 +252,7 @@ impl Builder {
     ///
     /// # Errors
     ///
-    /// See [`Cif::new`] for possible error conditions.
+    /// See [`Cif::new`](`crate::middle::Cif::new`) for possible error conditions.
     pub fn into_closure_owned_mut<U: 'static, R>(
         self,
         callback: super::CallbackMut<U, R>,
@@ -351,7 +351,7 @@ mod test {
 
         // SAFETY: `mut_ref_lambda_callback` takes two `u64`s and returns a `u64`.
         unsafe {
-            let fun: &unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
+            let fun: unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
 
             assert_eq!(11, fun(5, 6));
             assert_eq!(12, fun(5, 7));
@@ -368,7 +368,7 @@ mod test {
 
         // SAFETY: `ref_lambda_callback` takes two `u64`s and returns a `u64`.
         unsafe {
-            let fun: &unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
+            let fun: unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
 
             assert_eq!(11, fun(5, 6));
             assert_eq!(12, fun(5, 7));
@@ -385,7 +385,7 @@ mod test {
 
         // SAFETY: `mut_ref_lambda_callback` takes two `u64`s and returns a `u64`.
         unsafe {
-            let fun: &unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
+            let fun: unsafe extern "C" fn(u64, u64) -> u64 = closure.instantiate_code_ptr();
 
             assert_eq!(11, fun(5, 6));
             assert_eq!(12, fun(5, 7));

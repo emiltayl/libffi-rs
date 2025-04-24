@@ -189,8 +189,8 @@ mod private {
 ///
 /// # Safety
 ///
-/// This tuple is used to create a [`Cif`], so its contents need accurately describe the number of
-/// arguments and their memory layout.
+/// This tuple is used to create a [`Cif`](`crate::middle::Cif`), so its contents need accurately
+/// describe the number of arguments and their memory layout.
 pub unsafe trait FfiArgs<'arg>: private::FfiArgsSuper {
     /// The array of `Arg`s returned by [`FfiArgs::as_arg_array`]. This is `[Arg<'arg>; N]` where
     /// `N` is the number of arguments in the trait implementation.
@@ -328,8 +328,8 @@ implement_as_ffi_args_for_tuple!(16, 0: A, 1: B, 2: C, 3: D, 4: E, 5: F, 6: G, 7
 ///
 /// # Safety
 ///
-/// This tuple is used to create a [`Cif`], so its contents need accurately describe the memory
-/// layout of the return value.
+/// This tuple is used to create a [`Cif`](`crate::middle::Cif`), so its contents need accurately
+/// describe the memory layout of the return value.
 pub unsafe trait FfiRet: private::FfiRetSuper {
     /// Returns either `None` for `void` functions, or `Some(type)` for a function returning a
     /// value.

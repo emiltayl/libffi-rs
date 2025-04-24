@@ -117,9 +117,9 @@ where
     /// Wrap `self` in a wrapper that is `Send` and `Sync`. It is up to the caller to make sure that
     /// the function provided when creating `self` can safely be sent to another thread and called
     /// from multiple threads simultaneously.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// The function must be safe to call from other threads. It must also be thread safe, making
     /// it safe to call the function from several threads simultaneously.
     pub unsafe fn send_sync(self) -> ForeignFuncSendSync<ARGS, RET> {
@@ -210,9 +210,9 @@ where
 
 #[cfg(all(test, not(miri)))]
 mod test {
-    use crate::{high::AsFfiType, middle::Type};
-
     use super::*;
+    use crate::high::AsFfiType;
+    use crate::middle::Type;
 
     #[repr(C)]
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -243,7 +243,6 @@ mod test {
             Type::structure(&[Type::U64, Type::U64, Type::U64, Type::U64])
         }
     }
-
 
     /// Generate code to test calling `ForeignFunc` with an arbitrary number of arguments and
     /// optionally a result value.

@@ -12,8 +12,8 @@ mod private {
 /// argument. It is also recommended to use the convenience function `Arg::owned` to create
 /// arguments that are owned by `Arg`.
 ///
-/// When calling a function via a [CIF](Cif), each argument must be passed as a C `void*`. Wrapping
-/// the argument in the [`Arg`] struct accomplishes the necessary coercion.
+/// When calling a function via a [`Cif`](`crate::middle::Cif`), each argument must be passed as a C
+/// `void*`. Wrapping the argument in the [`Arg`] struct accomplishes the necessary coercion.
 ///
 /// # Example
 /// ```

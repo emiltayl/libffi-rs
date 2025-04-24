@@ -67,7 +67,7 @@ use crate::middle::{
 ///
 /// // If calling lambda callback with valid input parameters was potentially unsafe, `fun` wouild
 /// // have to be typed as `&unsafe extern "C"...`.
-/// let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+/// let fun: extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
 ///
 /// assert_eq!(11, fun(5, 6));
 /// assert_eq!(12, fun(5, 7));
@@ -249,26 +249,25 @@ impl<'closure> Closure<'closure> {
         })
     }
 
-    /// Obtains the callable code pointer for a closure.
-    ///
-    /// The result needs to be transmuted to the correct type before it can be called. If the type
-    /// is wrong, calling the result of `code_ptr` will result in undefined behavior.
-    pub fn code_ptr(&self) -> &unsafe extern "C" fn() {
-        // SAFETY: This may create a reference from a NULL pointer, should probably be fixed.
-        unsafe { self.code.as_fun() }
-    }
-
-    /// Transmutes the callable code pointer for a closure to a reference to any type. This is
-    /// intended to be used to transmute it to its correct function type in order to call it.
+    /// Converts the callable code pointer for a closure to a function pointer that can be called.
     ///
     /// # Safety
     ///
-    /// This method allows transmuting to a reference to *any* sized type, and cannot check whether
-    /// the code pointer actually has that type. If the type is wrong using the reference will
-    /// result in undefined behavior.
-    pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
-        // SAFETY: See this function's safety section.
-        unsafe { self.code.as_any_ref_() }
+    /// This function converts a function pointer to arbitrary types. It must be safe and sound to
+    /// transmute this closure's function pointer to the resulting type. It should only be used to
+    /// get a function pointer with a correct function signature.
+    pub unsafe fn instantiate_code_ptr<T>(&self) -> T {
+        // SAFETY:
+        // * It is up to the caller to uphold the safety requirements for this function.
+        // * `self.code` is not `NULL`.
+        unsafe {
+            // The actual function pointer
+            let fn_ptr = self.code.as_ptr();
+
+            // Create a pointer to the function pointer and deref it to get a function pointer
+            // of the proper type.
+            (&raw const fn_ptr).cast::<T>().read()
+        }
     }
 }
 
@@ -477,27 +476,25 @@ impl<U> ClosureOwned<U> {
         })
     }
 
-    /// Obtains the callable code pointer for a closure.
-    ///
-    /// The result needs to be transmuted to the correct type before it can be called. If the type
-    /// is wrong then undefined behavior will result.
-    pub fn code_ptr(&self) -> &unsafe extern "C" fn() {
-        // SAFETY: This may create a reference from a NULL pointer, should probably be fixed.
-        unsafe { self.code.as_fun() }
-    }
-
-    /// Transmutes the callable code pointer for a closure to a reference to any type. This is
-    /// intended to be used to transmute it to its correct function type in order to call it.
+    /// Converts the callable code pointer for a closure to a function pointer that can be called.
     ///
     /// # Safety
     ///
-    /// This method allows transmuting to a reference to *any* sized type, and cannot check whether
-    /// the code pointer actually has that type. If the type is wrong then undefined behavior will
-    /// result.
-    pub unsafe fn instantiate_code_ptr<T>(&self) -> &T {
-        // SAFETY: See this function's safety section.
-        // Note that this may create a reference from a NULL pointer, should probably be fixed.
-        unsafe { self.code.as_any_ref_() }
+    /// This function converts a function pointer to arbitrary types. It must be safe and sound to
+    /// transmute this closure's function pointer to the resulting type. It should only be used to
+    /// get a function pointer with a correct function signature.
+    pub unsafe fn instantiate_code_ptr<T>(&self) -> T {
+        // SAFETY:
+        // * It is up to the caller to uphold the safety requirements for this function.
+        // * `self.code` is not `NULL`.
+        unsafe {
+            // The actual function pointer
+            let fn_ptr = self.code.as_ptr();
+
+            // Create a pointer to the function pointer and deref it to get a function pointer
+            // of the proper type.
+            (&raw const fn_ptr).cast::<T>().read()
+        }
     }
 }
 
@@ -704,7 +701,7 @@ mod test {
             let closure = Closure::new(cif.clone(), callback, &env).unwrap();
 
             // SAFETY: `callback` expects one u64 and returns a u64.
-            let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
 
             assert_eq!(11, fun(6));
             assert_eq!(12, fun(7));
@@ -714,7 +711,7 @@ mod test {
             let closure = ClosureOwned::new(cif, callback, env).unwrap();
 
             // SAFETY: `callback` expects one u64 and returns a u64.
-            let fun: &extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C" fn(u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
 
             assert_eq!(11, fun(6));
             assert_eq!(12, fun(7));
@@ -745,7 +742,7 @@ mod test {
             let closure = Closure::new(cif.clone(), callback2, &env).unwrap();
 
             // SAFETY: `callback2` expects two u64 arguments and returns a u64.
-            let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
 
             assert_eq!(11, fun(5, 6));
         }
@@ -754,7 +751,7 @@ mod test {
             let closure = ClosureOwned::new(cif, callback2, env).unwrap();
 
             // SAFETY: `callback2` expects two u64 arguments and returns a u64.
-            let fun: &extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C" fn(u64, u64) -> u64 = unsafe { closure.instantiate_code_ptr() };
 
             assert_eq!(11, fun(5, 6));
         }
@@ -791,7 +788,7 @@ mod test {
             let closure = Closure::new_unwindable(cif.clone(), do_panic, &()).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
-            let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
             fun();
         });
         assert!(closure_1.is_err());
@@ -802,7 +799,7 @@ mod test {
                 Closure::new_unwindable_mut(cif.clone(), do_panic_mut, &mut void).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
-            let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
             fun();
         });
         assert!(closure_2.is_err());
@@ -811,7 +808,7 @@ mod test {
             let closure = ClosureOwned::new_unwindable(cif.clone(), do_panic, ()).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
-            let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
             fun();
         });
         assert!(closure_3.is_err());
@@ -820,7 +817,7 @@ mod test {
             let closure = ClosureOwned::new_unwindable_mut(cif.clone(), do_panic_mut, ()).unwrap();
             // SAFETY: `closure` refers to a "C-unwind" function that does not take any parameters
             // or return any values that does not perform any unsafe actions.
-            let fun: &extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
+            let fun: extern "C-unwind" fn() = unsafe { closure.instantiate_code_ptr() };
             fun();
         });
         assert!(closure_4.is_err());

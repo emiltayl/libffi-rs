@@ -78,7 +78,7 @@ fn main() -> Result<(), Error> {
     // * `atypes` points to an array of `ffi_types` with 4 elements.
     unsafe {
         prep_cif(
-            &mut qsort_cif,
+            &raw mut qsort_cif,
             ffi_abi_FFI_DEFAULT_ABI,
             4,
             &raw mut types::void,
@@ -95,7 +95,7 @@ fn main() -> Result<(), Error> {
     // * `atypes` points to an array of `ffi_types` with one element.
     unsafe {
         prep_cif(
-            &mut cmp_cif,
+            &raw mut cmp_cif,
             ffi_abi_FFI_DEFAULT_ABI,
             1,
             &raw mut types::sint32,
@@ -113,7 +113,7 @@ fn main() -> Result<(), Error> {
     unsafe {
         prep_closure(
             closure,
-            &mut cmp_cif,
+            &raw mut cmp_cif,
             compare_i32s,
             &(),
             code,
@@ -148,7 +148,7 @@ fn main() -> Result<(), Error> {
     //   elements, the size of each element, and a pointer to the comparison function.
     unsafe {
         call::<()>(
-            &mut qsort_cif,
+            &raw mut qsort_cif,
             CodePtr(qsort as *mut _),
             arg_array.as_mut_ptr(),
         );

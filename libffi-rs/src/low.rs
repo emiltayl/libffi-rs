@@ -283,7 +283,7 @@ impl CodePtr {
 /// // * The argument array contains 2 pointers to valid `ffi_type`s.
 /// unsafe {
 ///     prep_cif(
-///         &mut cif,
+///         &raw mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
 ///         2,
 ///         &raw mut types::pointer,
@@ -376,7 +376,7 @@ pub unsafe fn prep_cif(
 /// // * The argument array contains 4 pointers to valid `ffi_type`s.
 /// unsafe {
 ///     prep_cif_var(
-///         &mut printf_cif,
+///         &raw mut printf_cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
 ///         1,
 ///         4,
@@ -484,7 +484,13 @@ pub unsafe fn prep_cif_var(
 /// //   `u64`.
 /// // * `add_function` does not perform any unsafe actions.
 /// // * `args` is a pointer to an array of two pointers to `u64`s.
-/// let result: u64 = unsafe { call(&mut cif, CodePtr(add_function as *mut _), args.as_mut_ptr()) };
+/// let result: u64 = unsafe {
+///     call(
+///         &raw mut cif,
+///         CodePtr(add_function as *mut _),
+///         args.as_mut_ptr(),
+///     )
+/// };
 ///
 /// assert_eq!(9, result);
 /// # Ok::<(), libffi::low::Error>(())
@@ -771,7 +777,7 @@ pub type RawCallback = unsafe extern "C" fn(
 /// // * `atypes` points to an array of `ffi_types` with one element.
 /// unsafe {
 ///     prep_cif(
-///         &mut cif,
+///         &raw mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
 ///         1,
 ///         &raw mut types::uint64,
@@ -787,7 +793,7 @@ pub type RawCallback = unsafe extern "C" fn(
 /// // * `cif` and `userdata` point to memory that live until the end of this function, at which
 /// //   point `closure` will have been freed.
 /// unsafe {
-///     prep_closure(closure, &mut cif, callback, &raw mut userdata, code)?;
+///     prep_closure(closure, &raw mut cif, callback, &raw mut userdata, code)?;
 /// }
 ///
 /// // SAFETY:
@@ -1009,7 +1015,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 /// // * `atypes` points to an array of `ffi_types` with one element.
 /// unsafe {
 ///     prep_cif(
-///         &mut cif,
+///         &raw mut cif,
 ///         ffi_abi_FFI_DEFAULT_ABI,
 ///         1,
 ///         &raw mut types::uint64,
@@ -1025,7 +1031,7 @@ pub unsafe fn prep_closure_unwindable<U, R>(
 /// // * `cif` and `userdata` point to memory that live until the end of this function, at which
 /// //   point `closure` will have been freed.
 /// unsafe {
-///     prep_closure_mut(closure, &mut cif, callback, &raw mut userdata, code)?;
+///     prep_closure_mut(closure, &raw mut cif, callback, &raw mut userdata, code)?;
 /// }
 ///
 /// // SAFETY:
@@ -1134,7 +1140,7 @@ pub unsafe fn prep_closure_mut<U, R>(
 /// // * `cif` and `userdata` point to memory that live until the end of this function, at which
 /// //   point `closure` will have been freed.
 /// unsafe {
-///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &mut userdata, code)?;
+///     prep_closure_unwindable_mut(closure, &raw mut cif, callback, &raw mut userdata, code)?;
 /// }
 ///
 /// /// // SAFETY:
@@ -1398,7 +1404,11 @@ mod test {
                 )
                 .unwrap();
 
-                call::<()>(&mut cif, CodePtr(return_nothing as *mut _), ptr::null_mut());
+                call::<()>(
+                    &raw mut cif,
+                    CodePtr(return_nothing as *mut _),
+                    ptr::null_mut(),
+                );
             }
         }
 

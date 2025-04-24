@@ -706,7 +706,7 @@ mod test {
         //   discarding bits other than the 8 least significant.
         unsafe {
             ffi_call(
-                &mut cif,
+                &raw mut cif,
                 Some(*func_ptr_ptr),
                 (&raw mut rval).cast(),
                 [(&raw const arg).cast_mut().cast()].as_mut_ptr(),
@@ -732,7 +732,7 @@ mod test {
                 vec![&raw mut ffi_type_uint64, &raw mut ffi_type_uint64];
 
             let prep_status = ffi_prep_cif(
-                &mut cif,
+                &raw mut cif,
                 ffi_abi_FFI_DEFAULT_ABI,
                 2,
                 &raw mut ffi_type_uint64,
@@ -746,7 +746,7 @@ mod test {
                 .cast::<extern "C" fn()>();
 
             ffi_call(
-                &mut cif,
+                &raw mut cif,
                 Some(*func),
                 (&raw mut rval).cast::<c_void>(),
                 vec![

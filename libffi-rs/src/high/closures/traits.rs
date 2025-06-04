@@ -242,12 +242,13 @@ macro_rules! impl_closurable_for_arguments {
             ) {
                 let mut idx = 0;
                 $(
-                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
-                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // "cdecl" on 32-bit Windows does not guarantee the alignment of arguments on
+                    // the stack.
+                    #[cfg(all(target_arch = "x86", target_os = "windows"))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
-                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows")))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
@@ -286,12 +287,13 @@ macro_rules! impl_closurable_for_arguments {
             ) {
                 let mut idx = 0;
                 $(
-                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
-                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // "cdecl" on 32-bit Windows does not guarantee the alignment of arguments on
+                    // the stack.
+                    #[cfg(all(target_arch = "x86", target_os = "windows"))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
-                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows")))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
@@ -558,12 +560,13 @@ macro_rules! impl_closuremutable_for_arguments {
             ) {
                 let mut idx = 0;
                 $(
-                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
-                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // "cdecl" on 32-bit Windows does not guarantee the alignment of arguments on
+                    // the stack.
+                    #[cfg(all(target_arch = "x86", target_os = "windows"))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
-                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows")))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
@@ -601,12 +604,13 @@ macro_rules! impl_closuremutable_for_arguments {
             ) {
                 let mut idx = 0;
                 $(
-                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
-                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // "cdecl" on 32-bit Windows does not guarantee the alignment of arguments on
+                    // the stack.
+                    #[cfg(all(target_arch = "x86", target_os = "windows"))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
-                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows")))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
@@ -839,12 +843,13 @@ macro_rules! impl_closureonceable_for_arguments {
             ) {
                 let mut idx = 0;
                 $(
-                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
-                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // "cdecl" on 32-bit Windows does not guarantee the alignment of arguments on
+                    // the stack.
+                    #[cfg(all(target_arch = "x86", target_os = "windows"))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
-                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows")))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };
@@ -881,12 +886,13 @@ macro_rules! impl_closureonceable_for_arguments {
             ) {
                 let mut idx = 0;
                 $(
-                    // Workaround until https://github.com/emiltayl/libffi-rs/issues/29 is fixed
-                    #[cfg(all(target_arch = "x86", target_os = "windows", target_env = "gnu"))]
+                    // "cdecl" on 32-bit Windows does not guarantee the alignment of arguments on
+                    // the stack.
+                    #[cfg(all(target_arch = "x86", target_os = "windows"))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { ((*(args.add(idx))).cast::<$ty>()).read_unaligned() };
-                    #[cfg(not(all(target_arch = "x86", target_os = "windows", target_env = "gnu")))]
+                    #[cfg(not(all(target_arch = "x86", target_os = "windows")))]
                     // SAFETY: It is up to the caller to provide the correct number of arguments
                     // with the right types.
                     let $var: $ty = unsafe { *((*(args.add(idx))).cast::<$ty>()) };

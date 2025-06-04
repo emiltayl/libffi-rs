@@ -188,7 +188,7 @@ impl Builder {
         self,
         callback: super::Callback<U, R>,
         userdata: &U,
-    ) -> Result<super::Closure, Error> {
+    ) -> Result<super::Closure<'_>, Error> {
         super::Closure::new(self.into_cif()?, callback, userdata)
     }
 
@@ -211,7 +211,7 @@ impl Builder {
         self,
         callback: super::CallbackMut<U, R>,
         userdata: &mut U,
-    ) -> Result<super::Closure, Error> {
+    ) -> Result<super::Closure<'_>, Error> {
         super::Closure::new_mut(self.into_cif()?, callback, userdata)
     }
 

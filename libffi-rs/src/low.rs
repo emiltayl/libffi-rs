@@ -18,6 +18,7 @@
 
 use core::ffi::{c_uint, c_void};
 use core::mem::{MaybeUninit, transmute};
+use core::sync::atomic::AtomicBool;
 
 /// A constant with the default ABI of the target platform.
 pub use raw::ffi_abi_FFI_DEFAULT_ABI;
@@ -567,6 +568,7 @@ unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const u
     }
 }
 
+static ALLOC_LOCK: AtomicBool = AtomicBool::new(false);
 /// Allocates a closure.
 ///
 /// This function allocates a closure and returns a writable closure object and its corresponding
@@ -599,11 +601,18 @@ unsafe fn call_return_small_big_endian_result<R>(type_tag: u16, result: *const u
 pub fn closure_alloc() -> Result<(*mut ffi_closure, CodePtr), Error> {
     let mut code_pointer = MaybeUninit::<*mut c_void>::uninit();
 
+    while ALLOC_LOCK.swap(true, core::sync::atomic::Ordering::SeqCst) {
+        core::hint::spin_loop();
+    }
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+
     // SAFETY:
     // Call `ffi_closure_alloc` with sufficient size for a `ffi_closure`. This writes a pointer
     // to `code_pointer` if successful.
     let closure =
         unsafe { raw::ffi_closure_alloc(size_of::<ffi_closure>(), code_pointer.as_mut_ptr()) };
+
+    ALLOC_LOCK.store(false, core::sync::atomic::Ordering::SeqCst);
 
     if closure.is_null() {
         return Err(Error::UnableToAllocateClosure);
@@ -646,9 +655,16 @@ pub fn closure_alloc() -> Result<(*mut ffi_closure, CodePtr), Error> {
 /// # Ok::<(), libffi::low::Error>(())
 /// ```
 pub unsafe fn closure_free(closure: *mut ffi_closure) {
+    while ALLOC_LOCK.swap(true, core::sync::atomic::Ordering::SeqCst) {
+        core::hint::spin_loop();
+    }
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+
     // SAFETY: `ffi_closure_free` must be called to free any memory allocated by
     // `ffi_closure_alloc`.
     unsafe { raw::ffi_closure_free(closure.cast::<c_void>()) }
+
+    ALLOC_LOCK.store(false, core::sync::atomic::Ordering::SeqCst);
 }
 
 /// The function signature of a callback handler used for calling immutable closures with libffi.

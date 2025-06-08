@@ -7,7 +7,7 @@ const INCLUDE_DIRS: &[&str] = &["libffi", "libffi/include"];
 // libffi expects us to include the same folder in case of x86 and x86_64 architectures
 const INCLUDE_DIRS_X86: &[&str] = &["libffi/src/x86", "include/msvc/x86"];
 const INCLUDE_DIRS_X86_64: &[&str] = &["libffi/src/x86", "include/msvc/x86_64"];
-const INCLUDE_DIRS_AARCH64: &[&str] = &["libffi/src/aarch64"];
+const INCLUDE_DIRS_AARCH64: &[&str] = &["libffi/src/aarch64", "include/msvc/aarch64"];
 
 const BUILD_FILES: &[&str] = &[
     "libffi/src/tramp.c",

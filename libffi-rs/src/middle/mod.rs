@@ -553,7 +553,7 @@ mod test {
 
     macro_rules! gen_identity_fn_test {
         ($fn:ident($ty:ty = $val:expr, $ffity:expr)) => {{
-            let cif = Cif::new(&[$ffity], Some($ffity)).unwrap();
+            let cif = Cif::new(std::slice::from_ref(&$ffity), Some($ffity)).unwrap();
             let orig: $ty = $val;
             // SAFETY: It is assumed that $fn is a valid function accepting $ty and returning $ty.
             let result: $ty = unsafe {

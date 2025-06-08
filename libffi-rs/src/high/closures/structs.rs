@@ -423,11 +423,7 @@ mod test {
     #[test]
     fn closure_can_unwind() {
         let result = std::panic::catch_unwind(|| {
-            #[expect(
-                clippy::unused_unit,
-                reason = "`Closure` is unable to find the correct trait implementation without `-> ()`"
-            )]
-            let closure = Closure::new_unwindable(|| -> () { panic!("Test") }).unwrap();
+            let closure: Closure<_, (), _> = Closure::new_unwindable(|| panic!("Test")).unwrap();
 
             (closure.as_fn_ptr())();
         });

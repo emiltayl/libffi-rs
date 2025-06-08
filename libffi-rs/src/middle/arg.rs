@@ -89,7 +89,7 @@ impl<'arg> Arg<'arg> {
 
 /// Create a new borrowed `Arg`.
 #[deprecated = "Use `Arg::borrowed` instead. This function will be removed in a future version."]
-pub fn arg<T>(arg: &T) -> Arg {
+pub fn arg<T>(arg: &T) -> Arg<'_> {
     Arg::borrowed(arg)
 }
 

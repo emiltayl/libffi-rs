@@ -364,3 +364,22 @@ mod sparc64 {
 
 #[cfg(target_arch = "sparc64")]
 pub use sparc64::*;
+
+#[cfg(all(test, not(miri)))]
+mod test {
+    use core::ffi::c_uint;
+
+    use super::*;
+
+    // Disable test when performing dynamic linking to libffi until version 3.5.0 is required by
+    // libffi-rs.
+    #[cfg(not(feature = "system"))]
+    #[test]
+    fn verify_default_abi() {
+        unsafe extern "C" {
+            safe fn ffi_get_default_abi() -> c_uint;
+        }
+
+        assert_eq!(ffi_abi_FFI_DEFAULT_ABI, ffi_get_default_abi())
+    }
+}

@@ -37,7 +37,10 @@ unsafe extern "C" {
 // The function provided to `qsort` to compare two `i32`s
 unsafe extern "C" fn compare_i32s(
     _cif: &ffi_cif,
-    result: *mut mem::MaybeUninit<i32>,
+    // Libffi expects at least a full register to be written to `result`. If a `i32` is written,
+    // the comparison may fail on big endian targets. Since -1 is all 1's in two's complement,
+    // writing -1, 0, or 1 should work for all targets.
+    result: *mut mem::MaybeUninit<isize>,
     args: *const *const c_void,
     userdata: *const (),
 ) {

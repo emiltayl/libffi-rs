@@ -46,10 +46,10 @@ unsafe extern "C" fn compare_i32s(
 ) {
     // This function accepts a two pointers to `i32`s and returns a `i32`.
     unsafe {
-        let args: *const *const *const i32 = args.cast();
-        let arg_a = **args; // a pointer to the first `i32` to compare.
+        // a pointer to the first `i32` to compare.
+        let arg_a: *const i32 = *((*(args)).cast::<*const i32>());
         // We need to add 1 to get the next pointer in the argument array.
-        let arg_b = *((*args).add(1)); // a pointer to the second `i32` to compare.
+        let arg_b: *const i32 = *((*(args.add(1))).cast::<*const i32>());
 
         (*result).write(match (*arg_a).cmp(&*arg_b) {
             std::cmp::Ordering::Less => -1,
@@ -100,7 +100,7 @@ fn main() -> Result<(), Error> {
         prep_cif(
             &raw mut cmp_cif,
             ffi_abi_FFI_DEFAULT_ABI,
-            1,
+            2,
             &raw mut types::sint32,
             cmp_args.as_mut_ptr(),
         )?;

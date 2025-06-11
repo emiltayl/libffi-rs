@@ -1472,4 +1472,22 @@ mod test {
             return_large_struct
         );
     }
+
+    // Disable test when performing dynamic linking to libffi until version 3.5.0 is required by
+    // libffi-rs.
+    #[cfg(not(feature = "system"))]
+    #[test]
+    fn verify_closure_alloc_asks_for_sufficient_space() {
+        // `closure_alloc` allocates `mem::size_of::<ffi_closure>()` bytes. Libffi-rs does not
+        // necessarily have the correct size of `ffi_closure`, as the size could differ depending
+        // on compilation options and architecture. However, the `ffi_closure` defined in libffi-rs
+        // should always be at least as large as libffi's and `closure_alloc` should therefore
+        // allocate enough space. This test verifies that assumption.
+
+        unsafe extern "C" {
+            safe fn ffi_get_closure_size() -> usize;
+        }
+
+        assert!(size_of::<ffi_closure>() >= ffi_get_closure_size());
+    }
 }

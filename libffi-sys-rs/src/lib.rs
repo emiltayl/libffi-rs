@@ -797,7 +797,7 @@ mod test {
     // libffi-rs.
     #[cfg(not(feature = "system"))]
     #[test]
-    fn verify_closure_alloc_size() {
+    fn verify_ffi_closure_size() {
         unsafe extern "C" {
             safe fn ffi_get_closure_size() -> usize;
         }

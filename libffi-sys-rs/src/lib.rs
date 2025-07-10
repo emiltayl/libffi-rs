@@ -253,7 +253,7 @@ impl Default for ffi_raw {
 
 pub type ffi_java_raw = ffi_raw;
 
-#[repr(C, align(64))]
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub union ffi_trampoline {
     pub tramp: [c_char; FFI_TRAMPOLINE_SIZE],
@@ -271,6 +271,24 @@ pub union ffi_trampoline {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct ffi_closure {
+    // https://github.com/libffi/libffi/blob/v3.5.1/include/ffi.h.in#L343
+    // https://github.com/libffi/libffi/blob/v3.5.1/configure.ac#L228
+    // On arm and aarch64 apple architectures there is no trampoline union, but
+    // two pointers, `trampoline_table` and `trampoline_table_entry`.
+    #[cfg(all(
+        target_vendor = "apple",
+        any(target_arch = "arm", target_arch = "aarch64")
+    ))]
+    pub trampoline_table: *mut c_void,
+    #[cfg(all(
+        target_vendor = "apple",
+        any(target_arch = "arm", target_arch = "aarch64")
+    ))]
+    pub trampoline_table_entry: *mut c_void,
+    #[cfg(not(all(
+        target_vendor = "apple",
+        any(target_arch = "arm", target_arch = "aarch64")
+    )))]
     pub tramp: ffi_trampoline,
     pub cif: *mut ffi_cif,
     pub fun: Option<
@@ -287,10 +305,25 @@ pub struct ffi_closure {
 /// Implements Debug manually since sometimes [`FFI_TRAMPOLINE_SIZE`] is too large.
 impl Debug for ffi_closure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ffi_closure")
+        let mut debug_struct = f.debug_struct("ffi_closure");
+
+        #[cfg(all(
+            target_vendor = "apple",
+            any(target_arch = "arm", target_arch = "aarch64")
+        ))]
+        debug_struct
+            .field("trampoline_table", &self.trampoline_table)
+            .field("trampoline_table_entry", &self.trampoline_table_entry);
+        #[cfg(not(all(
+            target_vendor = "apple",
+            any(target_arch = "arm", target_arch = "aarch64")
+        )))]
+        debug_struct
             // SAFETY: This might be undefined behavior if `tramp` is a `ftramp`. It is probably
             // okay for debug purposes, however.
-            .field("tramp", unsafe { &self.tramp.tramp })
+            .field("tramp", unsafe { &self.tramp.tramp });
+
+        debug_struct
             .field("cif", &self.cif)
             .field("fun", &self.fun)
             .field("user_data", &self.user_data)
@@ -758,5 +791,17 @@ mod test {
 
             assert_eq!(rval, 9);
         }
+    }
+
+    // Disable test when performing dynamic linking to libffi until version 3.5.0 is required by
+    // libffi-rs.
+    #[cfg(not(feature = "system"))]
+    #[test]
+    fn verify_closure_alloc_size() {
+        unsafe extern "C" {
+            safe fn ffi_get_closure_size() -> usize;
+        }
+
+        assert_eq!(size_of::<ffi_closure>(), ffi_get_closure_size());
     }
 }

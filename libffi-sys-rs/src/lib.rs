@@ -253,7 +253,7 @@ impl Default for ffi_raw {
 
 pub type ffi_java_raw = ffi_raw;
 
-#[repr(C, align(64))]
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub union ffi_trampoline {
     pub tramp: [c_char; FFI_TRAMPOLINE_SIZE],

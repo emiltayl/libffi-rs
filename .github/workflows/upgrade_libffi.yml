@@ -96,4 +96,4 @@ jobs:
         with:
           ref: ${{ env.PR_BRANCH }}
       - name: 'Create pull request'
-        run: gh pr create -B "$BRANCH" -H "$PR_BRANCH" --title "Upgrade to libffi $VERSION" --body "Upgraded to libffi $VERSION from .tar.gz at $LIBFFI_URL." --draft
+        run: gh pr create -B "$BRANCH" -H "$PR_BRANCH" --title "Upgrade to libffi $VERSION" --body "Upgraded to libffi $VERSION from .tar.gz at $LIBFFI_URL."

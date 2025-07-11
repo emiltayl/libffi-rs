@@ -15,7 +15,8 @@ on:
 
 env:
   VERSION: ${{ github.event.inputs.version }}
-  BRANCH: action-upgrade-to-libffi-${{ github.event.inputs.version }}
+  PR_BRANCH: action-upgrade-${{ github.ref_name }}-to-libffi-${{ github.event.inputs.version }}
+  BRANCH: ${{ github.ref_name }}
   LIBFFI_URL: ${{ github.event.inputs.url }}
 
 jobs:
@@ -29,7 +30,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
       - name: Create new branch
-        run: git switch -c "$BRANCH"
+        run: git switch -c "$PR_BRANCH"
       - name: Delete old libffi, download an unpack new
         run: |
           rm -rf libffi-sys-rs/libffi/
@@ -40,7 +41,7 @@ jobs:
           tar zxvf "${{ runner.temp }}/libffi.tar.gz" -C libffi-sys-rs/libffi/ --strip-components=1
           git add libffi-sys-rs/libffi
           git commit -m "Downloaded libffi $VERSION from $LIBFFI_URL. SHA256 of the .tar.gz was $SHASUM."
-          git push origin "$BRANCH"
+          git push origin "$PR_BRANCH"
   
   generate_msvc_headers:
     name: 'Generate MSVC headers'
@@ -49,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ env.BRANCH }}
+          ref: ${{ env.PR_BRANCH }}
       - name: Setup git author
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -64,7 +65,7 @@ jobs:
       - name: Generate 32-bit x86 headers
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x86
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64_x86
           C:\msys64\usr\bin\env MSYS2_PATH_TYPE=inherit MSYSTEM=mingw32 CHERE_INVOKING=enabled_from_arguments /usr/bin/bash -lc "cd libffi-sys-rs/libffi && ./configure --build i686-pc-msys --target i686-pc-msys --host i686-pc-msys --disable-dependency-tracking --with-pic --disable-shared --disable-docs CC=""$(pwd)/msvcc.sh"" CXX=""$(pwd)/msvcc.sh"" CPP=""cl.exe -nologo -EP"" CXXCPP=""cl.exe -nologo -EP"""
           COPY /Y libffi-sys-rs\libffi\i686-pc-msys\include\ffi.h libffi-sys-rs\include\msvc\x86\ffi.h
           COPY /Y libffi-sys-rs\libffi\i686-pc-msys\fficonfig.h libffi-sys-rs\include\msvc\x86\fficonfig.h
@@ -93,6 +94,6 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: ${{ env.BRANCH }}
+          ref: ${{ env.PR_BRANCH }}
       - name: 'Create pull request'
-        run: gh pr create -B main -H "$BRANCH" --title "Upgrade to libffi $VERSION" --body "Upgraded to libffi $VERSION from .tar.gz at $LIBFFI_URL."
+        run: gh pr create -B "$BRANCH" -H "$PR_BRANCH" --title "Upgrade to libffi $VERSION" --body "Upgraded to libffi $VERSION from .tar.gz at $LIBFFI_URL." --draft
